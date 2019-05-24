@@ -1,9 +1,12 @@
 from typing import *
+from collections import namedtuple
 
 import numpy as np
 import torch
 
 _DATA = Union[np.ndarray, torch.Tensor]
+
+Batch = namedtuple('Batch', 'state action reward next_state done')
 
 
 class RingBuffer(object):
@@ -90,15 +93,14 @@ class ReplayMemory(object):
 
     def sample(self,
                batch_size: int,
-               device: torch.device = torch.device('cpu')) -> Dict[str, _DATA]:
+               device: torch.device = torch.device('cpu')) -> Batch:
         idxs = np.random.randint((self.size - 1), size=batch_size)
 
-        batch = dict()
-        batch['obs_1'] = self._state_buffer.sample(idxs, device)
-        batch['u'] = self._action_buffer.sample(idxs, device)
-        batch['r'] = self._reward_buffer.sample(idxs, device)
-        batch['obs_2'] = self._next_state_buffer.sample(idxs, device)
-        batch['d'] = self._terminal_buffer.sample(idxs, device)
+        batch = Batch(state=self._state_buffer.sample(idxs, device),
+                      action=self._action_buffer.sample(idxs, device),
+                      reward=self._reward_buffer.sample(idxs, device),
+                      next_state=self._next_state_buffer.sample(idxs, device),
+                      done=self._terminal_buffer.sample(idxs, device))
 
         return batch
 
