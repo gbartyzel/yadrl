@@ -21,6 +21,9 @@ class GaussianNoise(object):
         self._mean = mean
         self._sigma = sigma
 
+    def reset(self):
+        return
+
     def __call__(self) -> Union[np.ndarray, torch.Tensor]:
         if GaussianNoise.TORCH_BACKEND:
             return torch.normal(mean=self._mean, std=torch.ones(self._dim) * self._sigma)
@@ -38,6 +41,9 @@ class AdaptiveGaussianNoise(GaussianNoise):
 
         self._sigma_min = sigma_min
         self._sigma_decay_factor = (sigma - sigma_min) / n_step_annealing
+
+    def reset(self):
+        return
 
     def _reduce_sigma(self):
         self._sigma -= self._sigma_decay_factor

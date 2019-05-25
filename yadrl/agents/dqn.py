@@ -1,6 +1,7 @@
+import os
 import random
 from copy import deepcopy
-from typing import Any, Union
+from typing import Any, Union, NoReturn
 
 import numpy as np
 import torch
@@ -44,26 +45,14 @@ class DQN(BaseOffPolicy):
         self._model.eval()
         with torch.no_grad():
             action = torch.argmax(self._model(state))
+        self._model.train()
 
         if random.random() > self._eps or not train:
             return action.cpu().numpy()
         return np.array([random.randint(0, self._action_dim)])
 
-    def observe(self,
-                state: Union[np.ndarray, torch.Tensor],
-                action: Union[np.ndarray, torch.Tensor],
-                reward: Union[float, torch.Tensor],
-                next_state: Union[np.ndarray, torch.Tensor],
-                done: Any):
-        self._memory.push(state, action, reward, next_state, done)
-        if self._memory.size > self._warm_up_steps:
-            self._step += 1
-            self.update()
-
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
-
-        self._model.train()
 
         if self._use_double_q:
             next_action = self._model(batch.next_state).argmax(1).view(-1, 1)
@@ -82,5 +71,17 @@ class DQN(BaseOffPolicy):
         if self._use_soft_update:
             self._soft_update(self._model.parameters(), self._target_model.parameters())
 
-        if not self._use_soft_update and self._step % self._polyak == 0:
+        if not self._use_soft_update and self.step % self._polyak == 0:
             self._hard_update(self._model, self._target_model)
+
+    def _load(self) -> NoReturn:
+        if os.path.isfile(self._checkpoint):
+            self._model.load_state_dict(torch.load(self._checkpoint))
+            print('Model found and loaded!')
+            return
+        if not os.path.isdir(os.path.split(self._checkpoint)[0]):
+            os.mkdir(os.path.split(self._checkpoint)[0])
+        print('Model not found!')
+
+    def _save(self):
+        torch.save(self._model.state_dict(), self._checkpoint)

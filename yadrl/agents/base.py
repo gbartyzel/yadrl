@@ -1,4 +1,5 @@
 import abc
+import os
 from typing import Any, Union
 
 import numpy as np
@@ -8,15 +9,20 @@ import torch.nn as nn
 from yadrl.common.replay_memory import ReplayMemory
 
 
-class BaseOffPolicy(metaclass=abc.ABC):
+class BaseOffPolicy(abc.ABC):
     def __init__(self,
-                 state_dim,
-                 action_dim,
-                 discount_factor,
-                 polyak_factor,
-                 memory_capacity,
-                 batch_size,
-                 warm_up_steps):
+                 state_dim: int,
+                 action_dim: int,
+                 discount_factor: float,
+                 polyak_factor: float,
+                 memory_capacity: int,
+                 batch_size: int,
+                 warm_up_steps: int,
+                 update_frequency: int,
+                 logdir: str):
+        super(BaseOffPolicy, self).__init__()
+        self.step = 0
+
         self._device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self._state_dim = state_dim
@@ -24,9 +30,11 @@ class BaseOffPolicy(metaclass=abc.ABC):
         self._discount = discount_factor
         self._polyak = polyak_factor
 
-        self._step = 0
         self._batch_size = batch_size
         self._warm_up_steps = warm_up_steps
+        self._update_frequency = update_frequency
+
+        self._checkpoint = os.path.join(logdir, 'checkpoint.pth')
 
         self._memory = ReplayMemory(memory_capacity, state_dim, action_dim, True)
 
@@ -35,12 +43,28 @@ class BaseOffPolicy(metaclass=abc.ABC):
         return NotImplementedError
 
     @abc.abstractmethod
-    def observe(self, *args):
+    def update(self):
         return NotImplementedError
 
     @abc.abstractmethod
-    def update(self):
+    def _load(self):
         return NotImplementedError
+
+    @abc.abstractmethod
+    def _save(self):
+        return NotImplementedError
+
+    def observe(self,
+                state: Union[np.ndarray, torch.Tensor],
+                action: Union[np.ndarray, torch.Tensor],
+                reward: Union[float, torch.Tensor],
+                next_state: Union[np.ndarray, torch.Tensor],
+                done: Any):
+        self._memory.push(state, action, reward, next_state, done)
+        if self._memory.size > self._warm_up_steps:
+            self.step += 1
+            if self.step % self._update_frequency == 0:
+                self.update()
 
     def _soft_update(self, params: nn.parameter, target_params: nn.parameter):
         for param, t_param in zip(params, target_params):

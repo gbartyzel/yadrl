@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import torch
 import torch.nn as nn
 
@@ -47,6 +49,11 @@ class ValueHead(nn.Module):
         if self._q_value:
             return self._value_head(self._phi(*x))
         return self._value_head(self._phi(*x))
+
+
+class DoubleQValueHead(nn.Module):
+    def __init__(self, phi: nn.Module):
+        super(DoubleQValueHead, self).__init__()
 
 
 class DeterministicPolicyHead(nn.Module):
