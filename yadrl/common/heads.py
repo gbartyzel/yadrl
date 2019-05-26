@@ -89,3 +89,10 @@ class DeterministicPolicyHead(nn.Module):
     def forward(self, x: torch.Tensor, u: torch.Tensor):
         x = self._phi(x, u)
         return self._activation_fn(self._action_head(x))
+
+
+class GaussianPolicyHead(nn.Module):
+    def __init__(self,
+                 phi: nn.Module,
+                 output_dim: int):
+        pass

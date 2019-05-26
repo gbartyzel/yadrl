@@ -18,10 +18,10 @@ class DDPG(BaseOffPolicy):
                  actor_phi: nn.Module,
                  critic_phi: nn.Module,
                  noise: GaussianNoise,
-                 action_bounds: Union[Sequence[float], np.ndarray],
                  actor_lrate: float,
                  critic_lrate: float,
                  l2_reg_value: float,
+                 action_bounds: Union[Sequence[float], np.ndarray],
                  **kwargs):
         super(DDPG, self).__init__(**kwargs)
         if np.shape(action_bounds) != (2,):
