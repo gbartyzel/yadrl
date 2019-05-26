@@ -54,6 +54,17 @@ class ValueHead(nn.Module):
 class DoubleQValueHead(nn.Module):
     def __init__(self, phi: nn.Module):
         super(DoubleQValueHead, self).__init__()
+        self._q1_value = ValueHead(deepcopy(phi), q_value=True)
+        self._q2_value = ValueHead(deepcopy(phi), q_value=True)
+
+    def forward(self, *x):
+        return self._q1_value(*x), self._q2_value(*x)
+
+    def eval_q1(self, *x):
+        return self._q1_value(*x)
+
+    def eval_q2(self, *x):
+        return self._q2_value(*x)
 
 
 class DeterministicPolicyHead(nn.Module):

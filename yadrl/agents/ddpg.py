@@ -10,6 +10,7 @@ import torch.optim as optim
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.heads import DeterministicPolicyHead, ValueHead
+from yadrl.common.replay_memory import Batch
 
 
 class DDPG(BaseOffPolicy):
@@ -23,7 +24,8 @@ class DDPG(BaseOffPolicy):
                  l2_reg_value: float,
                  **kwargs):
         super(DDPG, self).__init__(**kwargs)
-        assert np.shape(action_bounds) == (2,)
+        if np.shape(action_bounds) != (2,):
+            raise ValueError
         self._action_bounds = action_bounds
 
         self._actor = DeterministicPolicyHead(actor_phi, self._action_dim, True).to(self._device)
@@ -53,25 +55,29 @@ class DDPG(BaseOffPolicy):
 
     def update(self):
         batch = self._memory(self._batch_size, self._device)
+        self._update_critic(batch)
+        self._update_actor(batch)
 
+        self._soft_update(self._actor.parameters(), self._target_actor.parameters())
+        self._soft_update(self._critic.parameters(), self._target_critic.parameters())
+
+    def _update_critic(self, batch: Batch):
         next_action = self._target_actor(batch.next_state)
-        target_next_q = self._target_critic(batch.next_state, next_action).detach()
+        target_next_q = self._target_critic(batch.next_state, next_action).view(-1, 1).detach()
 
         target_q = batch.reward + (1.0 - batch.done) * self._discount * target_next_q
         expected_q = self._critic(batch.state, batch.action)
 
-        loss = torch.mean(0.5 * (expected_q - target_q) ** 2)
+        loss = self._mse_loss(expected_q, target_q)
         self._critic_optim.zero_grad()
         loss.backward()
         self._critic_optim.step()
 
+    def _update_actor(self, batch: Batch):
         loss = -self._critic(batch.state, self._actor(batch.state))
         self._actor_optim.zero_grad()
         loss.backward()
         self._actor_optim.step()
-
-        self._soft_update(self._actor.parameters(), self._target_actor.parameters())
-        self._soft_update(self._critic.parameters(), self._target_critic.parameters())
 
     def _load(self) -> NoReturn:
         if os.path.isfile(self._checkpoint):

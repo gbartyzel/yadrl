@@ -62,7 +62,7 @@ class DQN(BaseOffPolicy):
 
         target_q = batch.reward + (1.0 - batch.done) * self._discount * target_next_q
         expected_q = self._model(batch.state).gather(1, batch.action)
-        loss = torch.mean(0.5 * (expected_q - target_q) ** 2)
+        loss = self._mse_loss(expected_q, target_q)
 
         self._optim.zero_grad()
         loss.backward()
