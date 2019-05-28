@@ -47,11 +47,11 @@ class BaseOffPolicy(abc.ABC):
         return NotImplementedError
 
     @abc.abstractmethod
-    def _load(self):
+    def load(self):
         return NotImplementedError
 
     @abc.abstractmethod
-    def _save(self):
+    def save(self):
         return NotImplementedError
 
     def observe(self,
@@ -76,4 +76,4 @@ class BaseOffPolicy(abc.ABC):
 
     @staticmethod
     def _mse_loss(prediction, target):
-        return torch.mean(0.5 * (prediction - target) ** 2)
+        return 0.5 * torch.mean((prediction - target) ** 2)

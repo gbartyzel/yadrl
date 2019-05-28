@@ -1,7 +1,7 @@
 import os
 import random
 from copy import deepcopy
-from typing import Any, Union, NoReturn
+from typing import NoReturn
 
 import numpy as np
 import torch
@@ -15,13 +15,16 @@ from yadrl.common.heads import DQNHead, DuelingDQNHead
 class DQN(BaseOffPolicy):
     def __init__(self,
                  phi: nn.Module,
+                 action_dim: int,
                  lrate: float,
                  epsilon_decay_factor: float,
                  epsilon_min: float,
                  use_soft_update: bool = True,
                  use_double_q: bool = False,
                  use_dueling: bool = False, **kwargs):
-        super(DQN, self).__init__(**kwargs)
+        super(DQN, self).__init__(action_dim=1, **kwargs)
+        self._action_dim = action_dim
+
         self._use_double_q = use_double_q
         self._use_soft_update = use_soft_update
 
@@ -30,15 +33,13 @@ class DQN(BaseOffPolicy):
         self._eps_min = epsilon_min
 
         head = DuelingDQNHead if use_dueling else DQNHead
-        self._model = head(phi, self._action_dim)
-        self._model.to(self._device)
-
+        self._model = head(phi, self._action_dim).to(self._device)
+        self.load()
         self._target_model = deepcopy(self._model).to(self._device)
-        self._target_model.eval()
 
         self._optim = optim.Adam(self._model.parameters(), lr=lrate)
 
-    def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
+    def act(self, state: int, train: bool = False) -> np.ndarray:
         self._eps = max(self._eps * self._esp_decay_factor, self._eps_min)
         state = torch.from_numpy(state).float().to(self._device)
 
@@ -49,19 +50,19 @@ class DQN(BaseOffPolicy):
 
         if random.random() > self._eps or not train:
             return action.cpu().numpy()
-        return np.array([random.randint(0, self._action_dim)])
+        return random.randint(0, self._action_dim - 1)
 
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
-
+        mask = 1.0 - batch.done
         if self._use_double_q:
             next_action = self._model(batch.next_state).argmax(1).view(-1, 1)
-            target_next_q = self._target_model(batch.next_state).gather(1, next_action).detach()
+            target_next_q = self._target_model(batch.next_state).gather(1, next_action)
         else:
-            target_next_q = self._target_model(batch.next_state).max(1)[0].view(-1, 1).detach()
+            target_next_q = self._target_model(batch.next_state).max(1)[0].view(-1, 1)
 
-        target_q = batch.reward + (1.0 - batch.done) * self._discount * target_next_q
-        expected_q = self._model(batch.state).gather(1, batch.action)
+        target_q = batch.reward + mask * self._discount * target_next_q.detach()
+        expected_q = self._model(batch.state).gather(1, batch.action.long())
         loss = self._mse_loss(expected_q, target_q)
 
         self._optim.zero_grad()
@@ -74,7 +75,7 @@ class DQN(BaseOffPolicy):
         if not self._use_soft_update and self.step % self._polyak == 0:
             self._hard_update(self._model, self._target_model)
 
-    def _load(self) -> NoReturn:
+    def load(self) -> NoReturn:
         if os.path.isfile(self._checkpoint):
             self._model.load_state_dict(torch.load(self._checkpoint))
             print('Model found and loaded!')
@@ -83,5 +84,5 @@ class DQN(BaseOffPolicy):
             os.mkdir(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
-    def _save(self):
+    def save(self):
         torch.save(self._model.state_dict(), self._checkpoint)

@@ -84,7 +84,7 @@ class TD3(BaseOffPolicy):
         loss.backward()
         self._actor_optim.step()
 
-    def _load(self) -> NoReturn:
+    def load(self) -> NoReturn:
         if os.path.isfile(self._checkpoint):
             models = torch.load(self._checkpoint)
             self._actor.load_state_dict(models['actor'])
@@ -95,7 +95,7 @@ class TD3(BaseOffPolicy):
             os.mkdir(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
-    def _save(self):
+    def save(self):
         state_dicts = {
             'actor': self._actor.state_dict(),
             'critic': self._critic.state_dict()

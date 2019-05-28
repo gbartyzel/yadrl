@@ -58,10 +58,12 @@ class RingBuffer(object):
         return tuple(value)
 
     @staticmethod
-    def _to_torch(value: Any) -> torch.Tensor:
+    def _to_torch(value: Any, reshape: bool = False) -> torch.Tensor:
         if not isinstance(value, np.ndarray):
-            value = np.asarray(value).reshape((-1, 1))
-        return torch.from_numpy(value).float().view(-1, 1)
+            value = np.asarray(value)
+        if reshape:
+            return torch.from_numpy(value).float().view(-1, 1)
+        return torch.from_numpy(value).float()
 
 
 class ReplayMemory(object):

@@ -62,10 +62,11 @@ class DDPG(BaseOffPolicy):
         self._soft_update(self._critic.parameters(), self._target_critic.parameters())
 
     def _update_critic(self, batch: Batch):
+        mask = 1.0 - batch.done
         next_action = self._target_actor(batch.next_state)
         target_next_q = self._target_critic(batch.next_state, next_action).view(-1, 1).detach()
 
-        target_q = batch.reward + (1.0 - batch.done) * self._discount * target_next_q
+        target_q = batch.reward + mask * self._discount * target_next_q
         expected_q = self._critic(batch.state, batch.action)
 
         loss = self._mse_loss(expected_q, target_q)
@@ -79,7 +80,7 @@ class DDPG(BaseOffPolicy):
         loss.backward()
         self._actor_optim.step()
 
-    def _load(self) -> NoReturn:
+    def load(self) -> NoReturn:
         if os.path.isfile(self._checkpoint):
             models = torch.load(self._checkpoint)
             self._actor.load_state_dict(models['actor'])
@@ -90,7 +91,7 @@ class DDPG(BaseOffPolicy):
             os.mkdir(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
-    def _save(self):
+    def save(self):
         state_dicts = {
             'actor': self._actor.state_dict(),
             'critic': self._critic.state_dict()
