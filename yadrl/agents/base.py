@@ -76,4 +76,4 @@ class BaseOffPolicy(abc.ABC):
 
     @staticmethod
     def _mse_loss(prediction, target):
-        return 0.5 * torch.mean((prediction - target) ** 2)
+        return torch.mean(0.5 * (prediction - target).pow(2))

@@ -1,11 +1,12 @@
 from copy import deepcopy
-from typing import Callable, Sequence
+from typing import Callable, Sequence, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.distributions.normal import Normal
 
 
 class DQNHead(nn.Module):
@@ -103,7 +104,7 @@ class GaussianPolicyHead(nn.Module):
                  output_dim: int,
                  independent_std: bool = True,
                  squash: bool = False,
-                 std_limits: Sequence[float] = (-1.0, 1.0)):
+                 std_limits: Sequence[float] = (-20.0, 2.0)):
         super(GaussianPolicyHead, self).__init__()
         self._independend_std = independent_std
         self._squash = squash
@@ -123,28 +124,29 @@ class GaussianPolicyHead(nn.Module):
 
     def forward(self, x):
         x = self._phi(x)
-        return torch.tanh(self._mean(x))
-
-    def sample(self, state, raw_action=None):
-        x = self._phi(state)
-        mean = torch.tanh(self._mean(x))
+        mean = self._mean(x)
         log_std = self._log_std.expand_as(mean) if self._independend_std else self._log_std(x)
         log_std = torch.clamp(log_std, *self._std_limits)
-        covariance = torch.diag_embed(torch.exp(log_std))
+        return mean, log_std
 
-        dist = MultivariateNormal(mean, covariance)
+    def sample(self, state: torch.Tensor,
+               raw_action: Optional[torch.Tensor] = None,
+               reparameterize: bool = True):
+        mean, log_std = self.forward(state)
+        covariance = torch.diag_embed(torch.exp(log_std))
+        dist = MultivariateNormal(loc=mean, scale_tril=covariance)
 
         if not raw_action:
-            raw_action = dist.sample()
+            raw_action = dist.rsample() if reparameterize else dist.sample()
 
         action = torch.tanh(raw_action) if self._squash else raw_action
-        log_prob = dist.log_prob(raw_action)
+        log_prob = dist.log_prob(raw_action).unsqueeze(-1)
         if self._squash:
             log_prob -= self._squash_correction(raw_action)
-        entropy = dist.entropy()
+        entropy = dist.entropy().unsqueeze(-1)
 
-        return action, log_prob, entropy
+        return action, log_prob, entropy, torch.tanh(mean)
 
     @staticmethod
-    def _squash_correction(action):
-        return torch.sum(torch.log(1.0 - torch.tanh(action) ** 2), dim=1)
+    def _squash_correction(action: torch.Tensor, eps: float = 1e-6):
+        return torch.log(1.0 - torch.tanh(action).pow(2) + eps).sum(-1, keepdim=True)
