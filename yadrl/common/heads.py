@@ -1,12 +1,11 @@
 from copy import deepcopy
-from typing import Callable, Sequence, Optional
+from typing import Callable, Sequence, Optional, Union, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.distributions.multivariate_normal import MultivariateNormal
-from torch.distributions.normal import Normal
 
 
 class DQNHead(nn.Module):
@@ -50,7 +49,7 @@ class ValueHead(nn.Module):
         self._value.weight.data.uniform_(-3e-3, 3e-3)
         self._value.bias.data.uniform(-3e-3, 3e-3)
 
-    def forward(self, *x):
+    def forward(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
         if self._q_value:
             return self._value(self._phi(*x))
         return self._value(self._phi(*x))
@@ -62,13 +61,13 @@ class DoubleQValueHead(nn.Module):
         self._q1_value = ValueHead(deepcopy(phi), q_value=True)
         self._q2_value = ValueHead(deepcopy(phi), q_value=True)
 
-    def forward(self, *x):
+    def forward(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
         return self._q1_value(*x), self._q2_value(*x)
 
-    def eval_q1(self, *x):
+    def eval_q1(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
         return self._q1_value(*x)
 
-    def eval_q2(self, *x):
+    def eval_q2(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
         return self._q2_value(*x)
 
 
@@ -116,20 +115,24 @@ class GaussianPolicyHead(nn.Module):
             self._log_std = nn.Parameter(torch.zeros(1, output_dim))
         else:
             self._log_std = nn.Linear(self._phi.output_dim, output_dim)
-            self._initialize_parameters()
+        self._initialize_parameters()
 
     def _initialize_parameters(self):
-        self._log_std.weight.data.uniform_(-3e-3, 3e-3)
-        self._log_std.bias.data.uniform_(-3e-3, 3e-3)
+        if self._independend_std:
+            self._log_std.weight.data.uniform_(-3e-3, 3e-3)
+            self._log_std.bias.data.uniform_(-3e-3, 3e-3)
+        self._mean.weight.data.uniform_(-3e-3, 3e-3)
+        self._mean.bias.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         x = self._phi(x)
         mean = self._mean(x)
         log_std = self._log_std.expand_as(mean) if self._independend_std else self._log_std(x)
         log_std = torch.clamp(log_std, *self._std_limits)
         return mean, log_std
 
-    def sample(self, state: torch.Tensor,
+    def sample(self,
+               state: torch.Tensor,
                raw_action: Optional[torch.Tensor] = None,
                reparameterize: bool = True):
         mean, log_std = self.forward(state)

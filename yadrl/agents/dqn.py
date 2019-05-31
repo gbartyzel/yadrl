@@ -34,8 +34,10 @@ class DQN(BaseOffPolicy):
 
         head = DuelingDQNHead if use_dueling else DQNHead
         self._model = head(phi, self._action_dim).to(self._device)
+        self._target_model = head(phi, self._action_dim).to(self._device)
+
         self.load()
-        self._target_model = deepcopy(self._model).to(self._device)
+        self._target_model.load_state_dict(self._model.state_dict())
 
         self._optim = optim.Adam(self._model.parameters(), lr=lrate)
 

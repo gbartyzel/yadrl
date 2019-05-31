@@ -1,5 +1,4 @@
 import os
-from copy import deepcopy
 from typing import NoReturn
 
 import numpy as np
@@ -24,16 +23,18 @@ class SAC(BaseOffPolicy):
         super(SAC, self).__init__(**kwargs)
         self._actor = GaussianPolicyHead(
             actor_phi, self._action_dim, False, True).to(self._device)
-        self._critic = DoubleQValueHead(critic_phi).to(self._device)
-        self.load()
-        self._target_critic = deepcopy(self._critic).to(self._device)
-
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=lrate)
+
+        self._critic = DoubleQValueHead(critic_phi).to(self._device)
+        self._target_critic = DoubleQValueHead(critic_phi).to(self._device)
         self._critic_optim = optim.Adam(self._critic.parameters(), lr=lrate)
 
         self._target_entropy = -np.prod(self._action_dim)
         self._log_alpha = torch.zeros(1, requires_grad=True, device=self._device)
         self._alpha_optim = optim.Adam([self._log_alpha], lr=lrate)
+
+        self.load()
+        self._target_critic.load_state_dict(self._critic.state_dict())
 
     def act(self, state: np.ndarray, train: bool = False):
         state = torch.from_numpy(state).float().to(self._device)

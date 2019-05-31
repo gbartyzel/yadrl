@@ -81,3 +81,11 @@ class DDPGMLPNetwork(BaseMLPNetwork):
                 x = expand_input(x, u)
             x = self._activation_fn(eval('self._dense_{}(x)'.format(i)))
         return x
+
+
+if __name__ == '__main__':
+    mlp = MLPNetwork(2, (2,2))
+
+    for name, params in mlp.named_parameters():
+        if 'weight' in name:
+            print(name, params)

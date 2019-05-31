@@ -1,5 +1,4 @@
 import os
-from copy import deepcopy
 from typing import Union, Sequence, NoReturn
 
 import numpy as np
@@ -30,12 +29,17 @@ class DDPG(BaseOffPolicy):
 
         self._actor = DeterministicPolicyHead(actor_phi, self._action_dim, True).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
-        self._target_actor = deepcopy(self._actor).to(self._device)
+        self._target_actor = DeterministicPolicyHead(
+            actor_phi, self._action_dim, True).to(self._device)
 
         self._critic = ValueHead(critic_phi, True, True)
         self._critic_optim = optim.Adam(self._critic.parameters(), lr=critic_lrate,
                                         weight_decay=l2_reg_value)
-        self._target_critic = deepcopy(self._critic).to(self._device)
+        self._target_critic = ValueHead(critic_phi, True, True).to(self._device)
+
+        self.load()
+        self._target_actor.load_state_dict(self._actor.state_dict())
+        self._target_critic.load_state_dict(self._critic.state_dict())
 
         self._noise = noise
 

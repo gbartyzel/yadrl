@@ -33,12 +33,16 @@ class TD3(BaseOffPolicy):
         self._policy_update_frequency = policy_update_frequency
 
         self._actor = DeterministicPolicyHead(actor_phi, self._action_dim).to(self._device)
-        self._target_actor = deepcopy(self._actor).to(self._device)
+        self._target_actor = DeterministicPolicyHead(actor_phi, self._action_dim).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), actor_lrate)
 
         self._critic = DoubleQValueHead(critic_phi).to(self._device)
-        self._target_critic = deepcopy(self._critic).to(self._device)
+        self._target_critic = DoubleQValueHead(critic_phi).to(self._device)
         self._critic_optim = optim.Adam(self._critic.parameters(), critic_lrate)
+
+        self.load()
+        self._target_actor.load_state_dict(self._actor.state_dict())
+        self._target_critic.load_state_dict(self._critic.state_dict())
 
         self._noise = GaussianNoise(self._action_dim, sigma=noise_std)
         self._target_noise = GaussianNoise(self._action_dim, sigma=target_noise_std)
