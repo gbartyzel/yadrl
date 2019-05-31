@@ -60,7 +60,7 @@ class SAC(BaseOffPolicy):
             next_action, log_prob, _, _ = self._actor.sample(batch.next_state)
             target_next_q = torch.min(*self._target_critic(batch.next_state, next_action))
             target_next_v = target_next_q - alpha * log_prob
-            target_q = batch.reward + mask * self._discount * target_next_v
+            target_q = batch.reward + mask * self._discount ** self._n_step * target_next_v
             target_q = target_q
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 

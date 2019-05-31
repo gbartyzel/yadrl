@@ -57,13 +57,14 @@ class DQN(BaseOffPolicy):
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
         mask = 1.0 - batch.done
+
         if self._use_double_q:
             next_action = self._model(batch.next_state).argmax(1).view(-1, 1)
             target_next_q = self._target_model(batch.next_state).gather(1, next_action)
         else:
             target_next_q = self._target_model(batch.next_state).max(1)[0].view(-1, 1)
 
-        target_q = batch.reward + mask * self._discount * target_next_q.detach()
+        target_q = batch.reward + mask * self._discount ** self._n_step * target_next_q.detach()
         expected_q = self._model(batch.state).gather(1, batch.action.long())
         loss = self._mse_loss(expected_q, target_q)
 

@@ -70,7 +70,7 @@ class DDPG(BaseOffPolicy):
         next_action = self._target_actor(batch.next_state)
         target_next_q = self._target_critic(batch.next_state, next_action).view(-1, 1).detach()
 
-        target_q = batch.reward + mask * self._discount * target_next_q
+        target_q = batch.reward + mask * self._discount ** self._n_step * target_next_q
         expected_q = self._critic(batch.state, batch.action)
 
         loss = self._mse_loss(expected_q, target_q)

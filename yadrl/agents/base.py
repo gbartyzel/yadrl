@@ -15,6 +15,7 @@ class BaseOffPolicy(abc.ABC):
                  action_dim: int,
                  discount_factor: float,
                  polyak_factor: float,
+                 n_step: int,
                  memory_capacity: int,
                  batch_size: int,
                  warm_up_steps: int,
@@ -29,6 +30,7 @@ class BaseOffPolicy(abc.ABC):
         self._action_dim = action_dim
         self._discount = discount_factor
         self._polyak = polyak_factor
+        self._n_step = n_step
 
         self._batch_size = batch_size
         self._warm_up_steps = warm_up_steps

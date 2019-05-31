@@ -68,13 +68,15 @@ class TD3(BaseOffPolicy):
             self._soft_update(self._actor.parameters(), self._target_actor.parameters())
 
     def _update_critic(self, batch: Batch):
+        mask = 1.0 - batch.done
+
         noise = torch.clamp(self._target_noise(), *self._target_noise_limit)
         next_action = self._target_actor(batch.next_state)
         next_action = torch.clamp(next_action + noise, *self._action_limit)
 
         target_next_q1, target_next_q2 = self._target_critic(batch.next_state, next_action)
         target_next_q = torch.min(target_next_q1, target_next_q2).view(-1, 1).detach()
-        target_q = batch.reward + (1.0 - batch.done) * self._discount * target_next_q
+        target_q = batch.reward + mask * self._discount ** self._n_step * target_next_q
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 
         loss = self._mse_loss(expected_q1, target_q) + self._mse_loss(expected_q2, target_q)
