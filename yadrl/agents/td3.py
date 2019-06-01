@@ -1,6 +1,5 @@
 import os
-from copy import deepcopy
-from typing import NoReturn, Sequence, Union
+from typing import NoReturn, Sequence, Union, Tuple
 
 import numpy as np
 import torch
@@ -8,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.common.heads import DoubleQValueHead, DeterministicPolicyHead
+from yadrl.networks import ContinuousDeterministicActor, DoubleCritic
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.replay_memory import Batch
 
@@ -32,13 +31,15 @@ class TD3(BaseOffPolicy):
         self._target_noise_limit = target_noise_limit
         self._policy_update_frequency = policy_update_frequency
 
-        self._actor = DeterministicPolicyHead(actor_phi, self._action_dim).to(self._device)
-        self._target_actor = DeterministicPolicyHead(actor_phi, self._action_dim).to(self._device)
-        self._actor_optim = optim.Adam(self._actor.parameters(), actor_lrate)
+        self._actor = ContinuousDeterministicActor(
+            actor_phi, self._action_dim).to(self._device)
+        self._target_actor = ContinuousDeterministicActor(
+            actor_phi, self._action_dim).to(self._device)
+        self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
 
-        self._critic = DoubleQValueHead(critic_phi).to(self._device)
-        self._target_critic = DoubleQValueHead(critic_phi).to(self._device)
-        self._critic_optim = optim.Adam(self._critic.parameters(), critic_lrate)
+        self._critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
+        self._target_critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
+        self._critic_optim = optim.Adam(self._critic.parameters(), lr=critic_lrate)
 
         self.load()
         self._target_actor.load_state_dict(self._actor.state_dict())

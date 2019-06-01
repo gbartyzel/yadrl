@@ -18,7 +18,7 @@ class RingBuffer(object):
         self._capacity = capacity
         self._container = self._backend.zeros(self._to_tuple(capacity) + self._to_tuple(dimension))
 
-    def add(self, value: Any):
+    def add(self, value: Any) -> NoReturn:
         if RingBuffer.TORCH_BACKEND:
             value = self._to_torch(value)
 
@@ -52,7 +52,7 @@ class RingBuffer(object):
         return self._container[-1]
 
     @staticmethod
-    def _to_tuple(value: Union[int, Sequence[int]]) -> Tuple[int]:
+    def _to_tuple(value: Union[int, Sequence[int]]) -> Tuple[int, ...]:
         if isinstance(value, int):
             return value,
         return tuple(value)

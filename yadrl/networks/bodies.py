@@ -18,12 +18,12 @@ def expand_input(*x: Sequence[torch.Tensor]):
     return torch.cat(x, dim=1)
 
 
-class BaseMLPNetwork(nn.Module):
+class _BaseMLPNetwork(nn.Module):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  output_dim: int,
                  activation_fn: Callable = F.relu):
-        super(BaseMLPNetwork, self).__init__()
+        super(_BaseMLPNetwork, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self._activation_fn = activation_fn
@@ -32,7 +32,7 @@ class BaseMLPNetwork(nn.Module):
         return NotImplementedError
 
 
-class MLPNetwork(BaseMLPNetwork):
+class MLPNetwork(_BaseMLPNetwork):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  hidden_dim: Tuple[int, ...],
@@ -44,14 +44,14 @@ class MLPNetwork(BaseMLPNetwork):
         for i in range(self._size):
             exec('self._dense_{0} = nn.Linear(layers[{0}], layers[{0} + 1])'.format(i))
 
-    def forward(self, *x: Sequence[torch.Tensor]):
+    def forward(self, *x: Sequence[torch.Tensor]) -> torch.Tensor:
         x = expand_input(*x)
         for i in range(self._size):
             x = self._activation_fn(eval('self._dense_{}(x)'.format(i)))
         return x
 
 
-class DDPGMLPNetwork(BaseMLPNetwork):
+class DDPGMLPNetwork(_BaseMLPNetwork):
     def __init__(self,
                  input_dim: Tuple[int, ...],
                  hidden_dim: Tuple[int, ...],
@@ -75,17 +75,9 @@ class DDPGMLPNetwork(BaseMLPNetwork):
             bias_vals = hidden_init(eval('self._dense_{}.bias'.format(i)))
             eval('self._dense_{0}.bias.data.uniform_(*bias_vals)'.format(i))
 
-    def forward(self, x: torch.Tensor, u: torch.Tensor):
+    def forward(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         for i in range(self._size):
             if i == 1:
                 x = expand_input(x, u)
             x = self._activation_fn(eval('self._dense_{}(x)'.format(i)))
         return x
-
-
-if __name__ == '__main__':
-    mlp = MLPNetwork(2, (2,2))
-
-    for name, params in mlp.named_parameters():
-        if 'weight' in name:
-            print(name, params)

@@ -1,6 +1,5 @@
 import os
 import random
-from copy import deepcopy
 from typing import NoReturn
 
 import numpy as np
@@ -9,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from .base import BaseOffPolicy
-from yadrl.common.heads import DQNHead, DuelingDQNHead
+from yadrl.networks import DQNModel
 
 
 class DQN(BaseOffPolicy):
@@ -32,9 +31,8 @@ class DQN(BaseOffPolicy):
         self._esp_decay_factor = epsilon_decay_factor
         self._eps_min = epsilon_min
 
-        head = DuelingDQNHead if use_dueling else DQNHead
-        self._model = head(phi, self._action_dim).to(self._device)
-        self._target_model = head(phi, self._action_dim).to(self._device)
+        self._model = DQNModel(phi, self._action_dim, use_dueling).to(self._device)
+        self._target_model = DQNModel(phi, self._action_dim, use_dueling).to(self._device)
 
         self.load()
         self._target_model.load_state_dict(self._model.state_dict())

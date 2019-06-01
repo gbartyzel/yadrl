@@ -8,7 +8,7 @@ import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
-from yadrl.common.heads import DeterministicPolicyHead, ValueHead
+from yadrl.networks import Critic, ContinuousDeterministicActor
 from yadrl.common.replay_memory import Batch
 
 
@@ -27,15 +27,16 @@ class DDPG(BaseOffPolicy):
             raise ValueError
         self._action_bounds = action_bounds
 
-        self._actor = DeterministicPolicyHead(actor_phi, self._action_dim, True).to(self._device)
+        self._actor = ContinuousDeterministicActor(
+            actor_phi, self._action_dim, True).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
-        self._target_actor = DeterministicPolicyHead(
+        self._target_actor = ContinuousDeterministicActor(
             actor_phi, self._action_dim, True).to(self._device)
 
-        self._critic = ValueHead(critic_phi, True, True)
+        self._critic = Critic(critic_phi, True)
         self._critic_optim = optim.Adam(self._critic.parameters(), lr=critic_lrate,
                                         weight_decay=l2_reg_value)
-        self._target_critic = ValueHead(critic_phi, True, True).to(self._device)
+        self._target_critic = Critic(critic_phi, True).to(self._device)
 
         self.load()
         self._target_actor.load_state_dict(self._actor.state_dict())

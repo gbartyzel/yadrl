@@ -1,46 +1,17 @@
-from copy import deepcopy
-from typing import Callable, Sequence, Optional, Union, Tuple
+from typing import Callable, Sequence, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.distributions.multivariate_normal import MultivariateNormal
-
-
-class DQNHead(nn.Module):
-    def __init__(self, phi: nn.Module, output_dim: int):
-        super(DQNHead, self).__init__()
-        self._phi = phi
-        self._q_value = nn.Linear(self._phi.output_dim, output_dim)
-
-    def forward(self, x: torch.Tensor):
-        x = self._phi(x)
-        return self._q_value(x)
-
-
-class DuelingDQNHead(nn.Module):
-    def __init__(self, phi: nn.Module, output_dim: int):
-        super(DuelingDQNHead, self).__init__()
-        self._phi = phi
-
-        self._advantage = nn.Linear(self._phi.output_dim, output_dim)
-        self._value = nn.Linear(self._phi.output_dim, 1)
-
-    def forward(self, x: torch.Tensor):
-        x = self._phi(x)
-        advantage = self._advantage(x)
-        value = self._value(x)
-
-        return value + advantage - advantage.mean(dim=1, keepdim=True)
+from torch.distributions.categorical import Categorical
 
 
 class ValueHead(nn.Module):
-    def __init__(self, phi: nn.Module, q_value: bool = False, ddpg_init: bool = False):
+    def __init__(self, input_dim: int, ddpg_init: bool = False):
         super(ValueHead, self).__init__()
-        self._q_value = q_value
-        self._phi = phi
-        self._value = nn.Linear(self._phi.output_dim, 1)
+        self._value = nn.Linear(input_dim, 1)
 
         if ddpg_init:
             self._initialize_variables()
@@ -49,39 +20,20 @@ class ValueHead(nn.Module):
         self._value.weight.data.uniform_(-3e-3, 3e-3)
         self._value.bias.data.uniform(-3e-3, 3e-3)
 
-    def forward(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
-        if self._q_value:
-            return self._value(self._phi(*x))
-        return self._value(self._phi(*x))
-
-
-class DoubleQValueHead(nn.Module):
-    def __init__(self, phi: nn.Module):
-        super(DoubleQValueHead, self).__init__()
-        self._q1_value = ValueHead(deepcopy(phi), q_value=True)
-        self._q2_value = ValueHead(deepcopy(phi), q_value=True)
-
-    def forward(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
-        return self._q1_value(*x), self._q2_value(*x)
-
-    def eval_q1(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
-        return self._q1_value(*x)
-
-    def eval_q2(self, *x: Union[torch.Tensor, Tuple[torch.Tensor, ...]]):
-        return self._q2_value(*x)
+    def forward(self, x: torch.Tensor):
+        return self._value(x)
 
 
 class DeterministicPolicyHead(nn.Module):
     def __init__(self,
-                 phi: nn.Module,
+                 input_dim: int,
                  output_dim: int,
                  ddpg_init: bool = False,
-                 activation_fn: Callable = F.tanh):
+                 activation_fn: Callable = torch.tanh):
         super(DeterministicPolicyHead, self).__init__()
         self._activation_fn = activation_fn
-        self._phi = phi
 
-        self._action = nn.Linear(self._phi.output_dim, output_dim)
+        self._action = nn.Linear(input_dim, output_dim)
 
         if ddpg_init:
             self._initialize_variables()
@@ -90,8 +42,7 @@ class DeterministicPolicyHead(nn.Module):
         self._action.weight.data.uniform_(-3e-3, 3e-3)
         self._action.bias.data.uniform(-3e-3, 3e-3)
 
-    def forward(self, x: torch.Tensor):
-        x = self._phi(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._activation_fn:
             return self._activation_fn(self._action(x))
         return self._action(x)
@@ -99,7 +50,7 @@ class DeterministicPolicyHead(nn.Module):
 
 class GaussianPolicyHead(nn.Module):
     def __init__(self,
-                 phi: nn.Module,
+                 input_dim: int,
                  output_dim: int,
                  independent_std: bool = True,
                  squash: bool = False,
@@ -109,12 +60,11 @@ class GaussianPolicyHead(nn.Module):
         self._squash = squash
         self._std_limits = std_limits
 
-        self._phi = phi
-        self._mean = nn.Linear(self._phi.output_dim, output_dim)
+        self._mean = nn.Linear(input_dim, output_dim)
         if independent_std:
             self._log_std = nn.Parameter(torch.zeros(1, output_dim))
         else:
-            self._log_std = nn.Linear(self._phi.output_dim, output_dim)
+            self._log_std = nn.Linear(input_dim, output_dim)
         self._initialize_parameters()
 
     def _initialize_parameters(self):
@@ -124,18 +74,17 @@ class GaussianPolicyHead(nn.Module):
         self._mean.weight.data.uniform_(-3e-3, 3e-3)
         self._mean.bias.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, x: torch.Tensor):
-        x = self._phi(x)
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, ...]:
         mean = self._mean(x)
         log_std = self._log_std.expand_as(mean) if self._independend_std else self._log_std(x)
         log_std = torch.clamp(log_std, *self._std_limits)
         return mean, log_std
 
     def sample(self,
-               state: torch.Tensor,
+               x: torch.Tensor,
                raw_action: Optional[torch.Tensor] = None,
-               reparameterize: bool = True):
-        mean, log_std = self.forward(state)
+               reparameterize: bool = True) -> Tuple[torch.Tensor, ...]:
+        mean, log_std = self.forward(x)
         covariance = torch.diag_embed(torch.exp(log_std))
         dist = MultivariateNormal(loc=mean, scale_tril=covariance)
 
@@ -148,8 +97,30 @@ class GaussianPolicyHead(nn.Module):
             log_prob -= self._squash_correction(raw_action)
         entropy = dist.entropy().unsqueeze(-1)
 
-        return action, log_prob, entropy, torch.tanh(mean)
+        return action, log_prob, entropy, torch.tanh(dist.mean)
 
     @staticmethod
-    def _squash_correction(action: torch.Tensor, eps: float = 1e-6):
+    def _squash_correction(action: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         return torch.log(1.0 - torch.tanh(action).pow(2) + eps).sum(-1, keepdim=True)
+
+
+class CategoricalPolicyHead(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int):
+        super(CategoricalPolicyHead, self).__init__()
+        self._logits = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.softmax(x, dim=1)
+        return x
+
+    def sample(self,
+               x: torch.Tensor,
+               action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, ...]:
+        x = self.forward(x)
+        dist = Categorical(x)
+
+        if not action:
+            action = dist.sample()
+        log_prob = dist.log_prob(action)
+        entropy = dist.entropy()
+        return action, log_prob, entropy
