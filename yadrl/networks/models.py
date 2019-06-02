@@ -54,13 +54,13 @@ class DoubleCritic(nn.Module):
         return self._value_2(self._phi_1(*x))
 
 
-class ContinuousDeterministicActor(nn.Module):
+class DeterministicActor(nn.Module):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
                  ddpg_init: bool = False,
                  activation_fn: Callable = torch.tanh):
-        super(ContinuousDeterministicActor, self).__init__()
+        super(DeterministicActor, self).__init__()
         self._phi = phi
         self._head = DeterministicPolicyHead(
             self._phi.output_dim, output_dim, ddpg_init, activation_fn)
@@ -69,14 +69,14 @@ class ContinuousDeterministicActor(nn.Module):
         return self._head(self._phi(x))
 
 
-class ContinuousStochasticActor(nn.Module):
+class GaussianActor(nn.Module):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
                  independent_std: bool = True,
                  squash: bool = False,
                  std_limits: Tuple[float, float] = (-20.0, 2.0)):
-        super(ContinuousStochasticActor, self).__init__()
+        super(GaussianActor, self).__init__()
         self._phi = phi
         self._head = GaussianPolicyHead(
             self._phi.output_dim, output_dim, independent_std, squash, std_limits)
@@ -88,9 +88,9 @@ class ContinuousStochasticActor(nn.Module):
         return self._head.sample(self._phi(x), raw_action, reparameterize)
 
 
-class DiscreteActor(nn.Module):
+class CategoricalActor(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int):
-        super(DiscreteActor, self).__init__()
+        super(CategoricalActor, self).__init__()
         self._phi = phi
         self._head = CategoricalPolicyHead(self._phi.output_dim, output_dim)
 
@@ -100,9 +100,9 @@ class DiscreteActor(nn.Module):
         return self._head.sample(self._phi(x), action)
 
 
-class DiscreteActorCritic(nn.Module):
+class CategoricalActorCritic(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int):
-        super(DiscreteActorCritic, self).__init__()
+        super(CategoricalActorCritic, self).__init__()
         self._phi = phi
         self._value = ValueHead(self._phi.output_dim)
         self._policy = CategoricalPolicyHead(self._phi.output_dim, output_dim)
@@ -116,14 +116,14 @@ class DiscreteActorCritic(nn.Module):
         return action, log_prob, entropy, value
 
 
-class ContinuousActorCritic(nn.Module):
+class GaussianActorCritic(nn.Module):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
                  independent_std: bool = True,
                  squash: bool = True,
                  std_limits: Tuple[float, float] = (-20.0, 2.0)):
-        super(ContinuousActorCritic, self).__init__()
+        super(GaussianActorCritic, self).__init__()
         self._phi = phi
         self._value = ValueHead(self._phi.output_dim)
         self._policy = GaussianPolicyHead(

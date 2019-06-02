@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.networks import ContinuousDeterministicActor, DoubleCritic
+from yadrl.networks import DeterministicActor, DoubleCritic
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.replay_memory import Batch
 
@@ -31,10 +31,8 @@ class TD3(BaseOffPolicy):
         self._target_noise_limit = target_noise_limit
         self._policy_update_frequency = policy_update_frequency
 
-        self._actor = ContinuousDeterministicActor(
-            actor_phi, self._action_dim).to(self._device)
-        self._target_actor = ContinuousDeterministicActor(
-            actor_phi, self._action_dim).to(self._device)
+        self._actor = DeterministicActor(actor_phi, self._action_dim).to(self._device)
+        self._target_actor = DeterministicActor(actor_phi, self._action_dim).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
 
         self._critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)

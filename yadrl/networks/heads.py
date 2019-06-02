@@ -123,4 +123,4 @@ class CategoricalPolicyHead(nn.Module):
             action = dist.sample()
         log_prob = dist.log_prob(action)
         entropy = dist.entropy()
-        return action, log_prob, entropy
+        return action, log_prob, entropy, x.argmax(-1, keepdim=True)

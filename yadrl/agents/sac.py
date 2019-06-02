@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.networks import ContinuousStochasticActor, DoubleCritic
+from yadrl.networks import GaussianActor, DoubleCritic
 from yadrl.common.replay_memory import Batch
 
 
@@ -19,8 +19,7 @@ class SAC(BaseOffPolicy):
                  **kwargs):
 
         super(SAC, self).__init__(**kwargs)
-        self._actor = ContinuousStochasticActor(
-            actor_phi, self._action_dim, False, True).to(self._device)
+        self._actor = GaussianActor(actor_phi, self._action_dim, False, True).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=lrate)
 
         self._critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
