@@ -37,12 +37,15 @@ class MLPNetwork(_BaseMLPNetwork):
                  input_dim: Union[int, Tuple[int, ...]],
                  hidden_dim: Tuple[int, ...],
                  activation_fn: Callable = F.relu):
-        super(MLPNetwork, self).__init__(input_dim, hidden_dim[-1], activation_fn)
+        super(MLPNetwork, self).__init__(input_dim, hidden_dim[-1],
+                                         activation_fn)
 
         self._size = len(hidden_dim)
-        layers = (input_dim, ) + hidden_dim
+        layers = (input_dim,) + hidden_dim
         for i in range(self._size):
-            exec('self._dense_{0} = nn.Linear(layers[{0}], layers[{0} + 1])'.format(i))
+            exec(
+                'self._dense_{} = nn.Linear({}, {}])'.format(
+                    i, layers[i], layers[i + 1]))
 
     def forward(self, *x: Sequence[torch.Tensor]) -> torch.Tensor:
         x = expand_input(*x)
@@ -56,15 +59,18 @@ class DDPGMLPNetwork(_BaseMLPNetwork):
                  input_dim: Tuple[int, ...],
                  hidden_dim: Tuple[int, ...],
                  activation_fn: Callable = F.relu):
-        super(DDPGMLPNetwork, self).__init__(input_dim, hidden_dim[-1], activation_fn)
+        super(DDPGMLPNetwork, self).__init__(input_dim, hidden_dim[-1],
+                                             activation_fn)
 
         self._size = len(hidden_dim)
-        l = (input_dim[0],) + tuple(hidden_dim)
+        layers = (input_dim[0],) + tuple(hidden_dim)
         for i in range(self._size):
             if i == 1:
-                exec('self._dense_{0} = nn.Linear(l[{0}] + input_dim[{0}], l[{0} + 1])'.format(i))
+                exec('self._dense_{} = nn.Linear({}, {})'.format(
+                    i, layers[i] + input_dim[i], layers[i + 1]))
             else:
-                exec('self._dense_{0} = nn.Linear(l[{0}], l[{0} + 1])'.format(i))
+                exec('self._dense_{} = nn.Linear({}, {})'.format(
+                    i, layers[i], layers[i + 1]))
 
         self._initialize_variables()
 
@@ -73,7 +79,7 @@ class DDPGMLPNetwork(_BaseMLPNetwork):
             weight_vals = hidden_init(eval('self._dense_{}.weight'.format(i)))
             eval('self._dense_{}.weight.data.uniform_(*weight_vals)'.format(i))
             bias_vals = hidden_init(eval('self._dense_{}.bias'.format(i)))
-            eval('self._dense_{0}.bias.data.uniform_(*bias_vals)'.format(i))
+            eval('self._dense_{}.bias.data.uniform_(*bias_vals)'.format(i))
 
     def forward(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         for i in range(self._size):

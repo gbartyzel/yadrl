@@ -3,9 +3,8 @@ from typing import Callable, Sequence, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.categorical import Categorical
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 
 class ValueHead(nn.Module):
@@ -18,7 +17,7 @@ class ValueHead(nn.Module):
 
     def _initialize_variables(self):
         self._value.weight.data.uniform_(-3e-3, 3e-3)
-        self._value.bias.data.uniform(-3e-3, 3e-3)
+        self._value.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, x: torch.Tensor):
         return self._value(x)
@@ -40,7 +39,7 @@ class DeterministicPolicyHead(nn.Module):
 
     def _initialize_variables(self):
         self._action.weight.data.uniform_(-3e-3, 3e-3)
-        self._action.bias.data.uniform(-3e-3, 3e-3)
+        self._action.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self._activation_fn:
@@ -76,7 +75,8 @@ class GaussianPolicyHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, ...]:
         mean = self._mean(x)
-        log_std = self._log_std.expand_as(mean) if self._independend_std else self._log_std(x)
+        log_std = self._log_std.expand_as(
+            mean) if self._independend_std else self._log_std(x)
         log_std = torch.clamp(log_std, *self._std_limits)
         return mean, log_std
 
@@ -100,8 +100,10 @@ class GaussianPolicyHead(nn.Module):
         return action, log_prob, entropy, torch.tanh(dist.mean)
 
     @staticmethod
-    def _squash_correction(action: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        return torch.log(1.0 - torch.tanh(action).pow(2) + eps).sum(-1, keepdim=True)
+    def _squash_correction(action: torch.Tensor,
+                           eps: float = 1e-6) -> torch.Tensor:
+        return torch.log(
+            1.0 - torch.tanh(action).pow(2) + eps).sum(-1, keepdim=True)
 
 
 class CategoricalPolicyHead(nn.Module):
@@ -115,7 +117,8 @@ class CategoricalPolicyHead(nn.Module):
 
     def sample(self,
                x: torch.Tensor,
-               action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, ...]:
+               action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
+                                                               ...]:
         x = self.forward(x)
         dist = Categorical(x)
 

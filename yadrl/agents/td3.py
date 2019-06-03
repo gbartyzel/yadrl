@@ -1,5 +1,5 @@
 import os
-from typing import NoReturn, Sequence, Union, Tuple
+from typing import NoReturn, Sequence, Union
 
 import numpy as np
 import torch
@@ -7,9 +7,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.networks import DeterministicActor, DoubleCritic
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.replay_memory import Batch
+from yadrl.networks import DeterministicActor, DoubleCritic
 
 
 class TD3(BaseOffPolicy):
@@ -31,20 +31,26 @@ class TD3(BaseOffPolicy):
         self._target_noise_limit = target_noise_limit
         self._policy_update_frequency = policy_update_frequency
 
-        self._actor = DeterministicActor(actor_phi, self._action_dim).to(self._device)
-        self._target_actor = DeterministicActor(actor_phi, self._action_dim).to(self._device)
+        self._actor = DeterministicActor(
+            actor_phi, self._action_dim).to(self._device)
+        self._target_actor = DeterministicActor(
+            actor_phi, self._action_dim).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
 
-        self._critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
-        self._target_critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
-        self._critic_optim = optim.Adam(self._critic.parameters(), lr=critic_lrate)
+        self._critic = DoubleCritic(
+            (critic_phi, critic_phi)).to(self._device)
+        self._target_critic = DoubleCritic(
+            (critic_phi, critic_phi)).to(self._device)
+        self._critic_optim = optim.Adam(
+            self._critic.parameters(), critic_lrate)
 
         self.load()
         self._target_actor.load_state_dict(self._actor.state_dict())
         self._target_critic.load_state_dict(self._critic.state_dict())
 
         self._noise = GaussianNoise(self._action_dim, sigma=noise_std)
-        self._target_noise = GaussianNoise(self._action_dim, sigma=target_noise_std)
+        self._target_noise = GaussianNoise(
+            self._action_dim, sigma=target_noise_std)
 
     def act(self, state, train):
         state = torch.from_numpy(state).float().to(self._device)
@@ -54,8 +60,8 @@ class TD3(BaseOffPolicy):
         self._actor.train()
 
         if train:
-            return torch.clamp(action + self._noise(), *self._action_limit)
-        return action
+            action = torch.clamp(action + self._noise(), *self._action_limit)
+        return action.cpu().numpy()
 
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
@@ -63,8 +69,10 @@ class TD3(BaseOffPolicy):
 
         if self.step % self._policy_update_frequency == 0:
             self._update_actor(batch)
-            self._soft_update(self._critic.parameters(), self._target_critic.parameters())
-            self._soft_update(self._actor.parameters(), self._target_actor.parameters())
+            self._soft_update(self._critic.parameters(),
+                              self._target_critic.parameters())
+            self._soft_update(self._actor.parameters(),
+                              self._target_actor.parameters())
 
     def _update_critic(self, batch: Batch):
         mask = 1.0 - batch.done
@@ -73,12 +81,16 @@ class TD3(BaseOffPolicy):
         next_action = self._target_actor(batch.next_state)
         next_action = torch.clamp(next_action + noise, *self._action_limit)
 
-        target_next_q1, target_next_q2 = self._target_critic(batch.next_state, next_action)
-        target_next_q = torch.min(target_next_q1, target_next_q2).view(-1, 1).detach()
-        target_q = batch.reward + mask * self._discount ** self._n_step * target_next_q
+        target_next_q1, target_next_q2 = self._target_critic(
+            batch.next_state, next_action)
+        target_next_q = torch.min(
+            target_next_q1, target_next_q2).view(-1, 1).detach()
+        target_q = (batch.reward + mask * self._discount ** self._n_step
+                    * target_next_q)
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 
-        loss = self._mse_loss(expected_q1, target_q) + self._mse_loss(expected_q2, target_q)
+        loss = self._mse_loss(expected_q1, target_q) + self._mse_loss(
+            expected_q2, target_q)
         self._critic_optim.zero_grad()
         loss.backward()
         self._critic_optim.step()

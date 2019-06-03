@@ -7,7 +7,10 @@ from numpy import ndarray
 
 
 class WorkerEnv(mp.Process):
-    def __init__(self, worker_id: int, conn: connection.Connection, env_name: str):
+    def __init__(self,
+                 worker_id: int,
+                 conn: connection.Connection,
+                 env_name: str):
         super(WorkerEnv, self).__init__()
         self._worker_id = worker_id
         self._conn = conn
@@ -62,15 +65,17 @@ class ParallelEnv(object):
         worker = WorkerEnv(worker_id, worker_conn, self._env_id)
         return worker, controller_conn
 
-    def step(self, actions: ndarray) -> Tuple[Tuple[ndarray, ...], Tuple[float, ...],
-                                              Tuple[bool, ...], Tuple[Dict[str, Any], ...]]:
+    def step(self, actions: ndarray) -> Tuple[
+        Tuple[ndarray, ...], Tuple[float, ...],
+        Tuple[bool, ...], Tuple[Dict[str, Any], ...]]:
         result = (self._send_and_recv(conn, 'step', actions[i])
                   for i, conn in enumerate(self._controller_conns))
         state, reward, done, info = zip(*result)
         return state, reward, done, info
 
     def reset(self) -> Tuple[ndarray, ...]:
-        states = tuple(self._send_and_recv(conn, 'reset') for conn in self._controller_conns)
+        states = tuple(self._send_and_recv(conn, 'reset') for conn in
+                       self._controller_conns)
         return states
 
     def close(self):

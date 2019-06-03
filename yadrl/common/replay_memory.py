@@ -1,5 +1,5 @@
-from typing import *
 from collections import namedtuple
+from typing import *
 
 import numpy as np
 import torch
@@ -16,9 +16,10 @@ class RingBuffer(object):
         self._backend = torch if RingBuffer.TORCH_BACKEND else np
         self._size = 0
         self._capacity = capacity
-        self._container = self._backend.zeros(self._to_tuple(capacity) + self._to_tuple(dimension))
+        self._container = self._backend.zeros(
+            self._to_tuple(capacity) + self._to_tuple(dimension))
 
-    def add(self, value: Any) -> NoReturn:
+    def add(self, value: Any):
         if RingBuffer.TORCH_BACKEND:
             value = self._to_torch(value)
 

@@ -1,10 +1,10 @@
-from typing import Callable, Optional, Union, Tuple
+from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
 
-from yadrl.networks.heads import ValueHead, DeterministicPolicyHead, GaussianPolicyHead, \
-    CategoricalPolicyHead
+from yadrl.networks.heads import ValueHead, DeterministicPolicyHead, \
+    GaussianPolicyHead, CategoricalPolicyHead
 
 
 class DQNModel(nn.Module):
@@ -44,6 +44,14 @@ class DoubleCritic(nn.Module):
         self._value_1 = ValueHead(self._phi_1.output_dim, ddpg_init)
         self._value_2 = ValueHead(self._phi_2.output_dim, ddpg_init)
 
+    def net_1_parameters(self):
+        return tuple(self._phi_1.parameters()) \
+               + tuple(self._value_1.parameters())
+
+    def net_2_parameters(self):
+        return tuple(self._phi_2.parameters()) \
+               + tuple(self._value_2.parameters())
+
     def forward(self, *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
         return self._value_1(self._phi_1(*x)), self._value_2(self._phi_2(*x))
 
@@ -79,7 +87,8 @@ class GaussianActor(nn.Module):
         super(GaussianActor, self).__init__()
         self._phi = phi
         self._head = GaussianPolicyHead(
-            self._phi.output_dim, output_dim, independent_std, squash, std_limits)
+            self._phi.output_dim, output_dim, independent_std, squash,
+            std_limits)
 
     def forward(self,
                 x: torch.Tensor,
@@ -96,7 +105,8 @@ class CategoricalActor(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, ...]:
+                action: Optional[torch.Tensor] = None) -> Tuple[
+        torch.Tensor, ...]:
         return self._head.sample(self._phi(x), action)
 
 
@@ -109,10 +119,11 @@ class CategoricalActorCritic(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, ...]:
+                action: Optional[torch.Tensor] = None) -> Tuple[
+        torch.Tensor, ...]:
         x = self._phi(x)
         value = self._value(x)
-        action, log_prob, entropy = self._policy.sample(x)
+        action, log_prob, entropy = self._policy.sample(x, action)
         return action, log_prob, entropy, value
 
 
@@ -127,7 +138,8 @@ class GaussianActorCritic(nn.Module):
         self._phi = phi
         self._value = ValueHead(self._phi.output_dim)
         self._policy = GaussianPolicyHead(
-            self._phi.output_dim, output_dim, independent_std, squash, std_limits)
+            self._phi.output_dim, output_dim, independent_std, squash,
+            std_limits)
 
     def forward(self,
                 x: torch.Tensor,
@@ -135,5 +147,6 @@ class GaussianActorCritic(nn.Module):
                 reparametrize: bool = False) -> Tuple[torch.Tensor, ...]:
         x = self._phi(x)
         value = self._value(x)
-        action, log_prob, entropy, raw_action = self._policy.sample(x)
+        action, log_prob, entropy, raw_action = self._policy.sample(
+            x, action, reparametrize)
         return action, log_prob, entropy, raw_action, value

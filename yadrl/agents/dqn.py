@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from .base import BaseOffPolicy
+from yadrl.agents.base import BaseOffPolicy
 from yadrl.networks import DQNModel
 
 
@@ -31,8 +31,10 @@ class DQN(BaseOffPolicy):
         self._esp_decay_factor = epsilon_decay_factor
         self._eps_min = epsilon_min
 
-        self._model = DQNModel(phi, self._action_dim, use_dueling).to(self._device)
-        self._target_model = DQNModel(phi, self._action_dim, use_dueling).to(self._device)
+        self._model = DQNModel(
+            phi, self._action_dim, use_dueling).to(self._device)
+        self._target_model = DQNModel(
+            phi, self._action_dim, use_dueling).to(self._device)
 
         self.load()
         self._target_model.load_state_dict(self._model.state_dict())
@@ -58,11 +60,14 @@ class DQN(BaseOffPolicy):
 
         if self._use_double_q:
             next_action = self._model(batch.next_state).argmax(1).view(-1, 1)
-            target_next_q = self._target_model(batch.next_state).gather(1, next_action)
+            target_next_q = self._target_model(
+                batch.next_state).gather(1, next_action)
         else:
-            target_next_q = self._target_model(batch.next_state).max(1)[0].view(-1, 1)
+            target_next_q = self._target_model(
+                batch.next_state).max(1)[0].view(-1, 1)
 
-        target_q = batch.reward + mask * self._discount ** self._n_step * target_next_q.detach()
+        target_q = (batch.reward + mask * self._discount ** self._n_step
+                    * target_next_q.detach())
         expected_q = self._model(batch.state).gather(1, batch.action.long())
         loss = self._mse_loss(expected_q, target_q)
 
@@ -71,7 +76,8 @@ class DQN(BaseOffPolicy):
         self._optim.step()
 
         if self._use_soft_update:
-            self._soft_update(self._model.parameters(), self._target_model.parameters())
+            self._soft_update(self._model.parameters(),
+                              self._target_model.parameters())
 
         if not self._use_soft_update and self.step % self._polyak == 0:
             self._hard_update(self._model, self._target_model)

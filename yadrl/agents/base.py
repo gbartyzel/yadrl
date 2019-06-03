@@ -24,7 +24,8 @@ class BaseOffPolicy(abc.ABC):
         super(BaseOffPolicy, self).__init__()
         self.step = 0
 
-        self._device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self._device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu')
 
         self._state_dim = state_dim
         self._action_dim = action_dim
@@ -38,7 +39,8 @@ class BaseOffPolicy(abc.ABC):
 
         self._checkpoint = os.path.join(logdir, 'checkpoint.pth')
 
-        self._memory = ReplayMemory(memory_capacity, state_dim, action_dim, True)
+        self._memory = ReplayMemory(memory_capacity, state_dim, action_dim,
+                                    True)
 
     @abc.abstractmethod
     def act(self, *args):
@@ -70,7 +72,8 @@ class BaseOffPolicy(abc.ABC):
 
     def _soft_update(self, params: nn.parameter, target_params: nn.parameter):
         for param, t_param in zip(params, target_params):
-            t_param.data.copy_(t_param.data * (1.0 - self._polyak) + param.data * self._polyak)
+            t_param.data.copy_(
+                t_param.data * (1.0 - self._polyak) + param.data * self._polyak)
 
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):

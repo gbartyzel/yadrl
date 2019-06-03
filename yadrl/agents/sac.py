@@ -1,5 +1,5 @@
 import os
-from typing import NoReturn, Tuple
+from typing import NoReturn
 
 import numpy as np
 import torch
@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.networks import GaussianActor, DoubleCritic
 from yadrl.common.replay_memory import Batch
+from yadrl.networks import GaussianActor, DoubleCritic
 
 
 class SAC(BaseOffPolicy):
@@ -19,67 +19,79 @@ class SAC(BaseOffPolicy):
                  **kwargs):
 
         super(SAC, self).__init__(**kwargs)
-        self._actor = GaussianActor(actor_phi, self._action_dim, False, True).to(self._device)
+        self._actor = GaussianActor(
+            actor_phi, self._action_dim, False, True).to(self._device)
         self._actor_optim = optim.Adam(self._actor.parameters(), lr=lrate)
 
-        self._critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
-        self._target_critic = DoubleCritic(phi=(critic_phi, critic_phi)).to(self._device)
-        self._critic_optim = optim.Adam(self._critic.parameters(), lr=lrate)
+        self._critic = DoubleCritic(
+            (critic_phi, critic_phi)).to(self._device)
+        self._target_critic = DoubleCritic(
+            (critic_phi, critic_phi)).to(self._device)
+        self._critic_1_optim = optim.Adam(
+            self._critic.net_1_parameters(), lr=lrate)
+        self._critic_2_optim = optim.Adam(
+            self._critic.net_2_parameters(), lr=lrate)
 
         self._target_entropy = -np.prod(self._action_dim)
-        self._log_alpha = torch.zeros(1, requires_grad=True, device=self._device)
+        self._log_alpha = torch.zeros(
+            1, requires_grad=True, device=self._device)
         self._alpha_optim = optim.Adam([self._log_alpha], lr=lrate)
 
         self.load()
         self._target_critic.load_state_dict(self._critic.state_dict())
 
-    def act(self, state: np.ndarray, train: bool = False):
+    def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().to(self._device)
         self._actor.eval()
         with torch.no_grad():
             if train:
-                action, _, _, _ = self._actor(state)
+                action, _, _, _ = self._actor(state, reparameterize=True)
             else:
-                _, _, _, action = self._actor(state)
+                _, _, _, action = self._actor(state, reparameterize=True)
         self._actor.train()
         return action[0].cpu().numpy()
 
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
         self._update_parameters(*self._compute_loses(batch))
-        self._soft_update(self._critic.parameters(), self._target_critic.parameters())
+        self._soft_update(self._critic.parameters(),
+                          self._target_critic.parameters())
 
     def _compute_loses(self, batch: Batch):
         alpha = torch.exp(self._log_alpha)
         mask = 1.0 - batch.done
 
         with torch.no_grad():
-            next_action, log_prob, _, _ = self._actor(batch.next_state)
-            target_next_q = torch.min(*self._target_critic(batch.next_state, next_action))
+            next_action, log_prob, _, _ = self._actor(batch.next_state,
+                                                      reparameterize=True)
+            target_next_q = torch.min(
+                *self._target_critic(batch.next_state, next_action))
             target_next_v = target_next_q - alpha * log_prob
-            target_q = batch.reward + mask * self._discount ** self._n_step * target_next_v
+            target_q = (batch.reward + mask * self._discount ** self._n_step
+                        * target_next_v)
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 
         q1_loss = self._mse_loss(expected_q1, target_q)
         q2_loss = self._mse_loss(expected_q2, target_q)
 
-        action, log_prob, _, _ = self._actor(batch.state)
+        action, log_prob, _, _ = self._actor(batch.state, reparameterize=True)
         target_log_prob = torch.min(*self._critic(batch.state, action))
         policy_loss = torch.mean(alpha * log_prob - target_log_prob)
 
-        alpha_loss = torch.mean(-self._log_alpha * (log_prob + self._target_entropy).detach())
+        alpha_loss = torch.mean(
+            -self._log_alpha * (log_prob + self._target_entropy).detach())
 
         return q1_loss, q2_loss, policy_loss, alpha_loss
 
     def _update_parameters(self, q1_loss, q2_loss, policy_loss, alpha_loss):
 
-        self._critic_optim.zero_grad()
+        self._critic_1_optim.zero_grad()
         q1_loss.backward()
-        self._critic_optim.step()
+        self._critic_1_optim.step()
 
-        self._critic_optim.zero_grad()
+        self._critic_2_optim.zero_grad()
         q2_loss.backward()
-        self._critic_optim.step()
+        self._critic_2_optim.step()
 
         self._actor_optim.zero_grad()
         policy_loss.backward()

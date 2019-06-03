@@ -1,7 +1,7 @@
 from typing import Union
 
-import torch
 import numpy as np
+import torch
 
 
 class GaussianNoise(object):
@@ -26,8 +26,10 @@ class GaussianNoise(object):
 
     def __call__(self) -> Union[np.ndarray, torch.Tensor]:
         if GaussianNoise.TORCH_BACKEND:
-            return torch.normal(mean=self._mean, std=torch.ones(self._dim) * self._sigma)
-        return np.random.normal(loc=self._mean, scale=self._sigma, dim=self._dim)
+            return torch.normal(mean=self._mean,
+                                std=torch.ones(self._dim) * self._sigma)
+        return np.random.normal(loc=self._mean, scale=self._sigma,
+                                dim=self._dim)
 
 
 class AdaptiveGaussianNoise(GaussianNoise):
@@ -52,8 +54,10 @@ class AdaptiveGaussianNoise(GaussianNoise):
     def __call__(self) -> Union[np.ndarray, torch.Tensor]:
         self._reduce_sigma()
         if GaussianNoise.TORCH_BACKEND:
-            return torch.normal(mean=self._mean, std=torch.ones(self._dim) * self._sigma)
-        return np.random.normal(loc=self._mean, scale=self._sigma, dim=self._dim)
+            return torch.normal(mean=self._mean,
+                                std=torch.ones(self._dim) * self._sigma)
+        return np.random.normal(loc=self._mean, scale=self._sigma,
+                                dim=self._dim)
 
 
 class OUNoise(AdaptiveGaussianNoise):
@@ -80,7 +84,8 @@ class OUNoise(AdaptiveGaussianNoise):
         :param n_step_annealing: float, decremental steps for sigma
         :param dt: float,
         """
-        super(OUNoise, self).__init__(dim, mean, sigma, sigma_min, n_step_annealing)
+        super(OUNoise, self).__init__(dim, mean, sigma, sigma_min,
+                                      n_step_annealing)
         self._dt = dt
         self._theta = theta
 
