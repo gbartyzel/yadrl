@@ -28,6 +28,8 @@ class WorkerEnv(mp.Process):
     def _step(self, action: ndarray):
         state, reward, done, info = self._env.step(action)
         self._conn.send((state, reward, done, info))
+        if done:
+            self._env.reset()
         return False
 
     def _reset(self, *args):
