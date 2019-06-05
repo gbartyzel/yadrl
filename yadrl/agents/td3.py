@@ -25,6 +25,7 @@ class TD3(BaseOffPolicy):
                  critic_lrate: float,
                  **kwargs):
         super(TD3, self).__init__(**kwargs)
+        GaussianNoise.TORCH_BACKEND = True
         if np.shape(action_limit) != (2,):
             raise ValueError
         self._action_limit = action_limit
@@ -35,14 +36,13 @@ class TD3(BaseOffPolicy):
             actor_phi, self._action_dim).to(self._device)
         self._target_actor = DeterministicActor(
             actor_phi, self._action_dim).to(self._device)
-        self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
+        self._actor_optim = optim.Adam(self._actor.parameters(), actor_lrate)
 
         self._critic = DoubleCritic(
             (critic_phi, critic_phi)).to(self._device)
         self._target_critic = DoubleCritic(
             (critic_phi, critic_phi)).to(self._device)
-        self._critic_optim = optim.Adam(
-            self._critic.parameters(), critic_lrate)
+        self._critic_optim = optim.Adam(self._critic.parameters(), critic_lrate)
 
         self.load()
         self._target_actor.load_state_dict(self._actor.state_dict())
@@ -56,12 +56,12 @@ class TD3(BaseOffPolicy):
         state = torch.from_numpy(state).float().to(self._device)
         self._actor.eval()
         with torch.no_grad():
-            action = self._actor(state)
+            action = self._actor(state).cpu()
         self._actor.train()
 
         if train:
             action = torch.clamp(action + self._noise(), *self._action_limit)
-        return action.cpu().numpy()
+        return action[0].numpy()
 
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
@@ -77,26 +77,28 @@ class TD3(BaseOffPolicy):
     def _update_critic(self, batch: Batch):
         mask = 1.0 - batch.done
 
-        noise = torch.clamp(self._target_noise(), *self._target_noise_limit)
+        noise = self._target_noise().clamp(
+            *self._target_noise_limit).to(self._device)
         next_action = self._target_actor(batch.next_state)
         next_action = torch.clamp(next_action + noise, *self._action_limit)
 
-        target_next_q1, target_next_q2 = self._target_critic(
-            batch.next_state, next_action)
-        target_next_q = torch.min(
-            target_next_q1, target_next_q2).view(-1, 1).detach()
+        target_next_qs = self._target_critic(batch.next_state, next_action)
+        target_next_q = torch.min(target_next_qs).view(-1, 1).detach()
         target_q = (batch.reward + mask * self._discount ** self._n_step
                     * target_next_q)
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 
-        loss = self._mse_loss(expected_q1, target_q) + self._mse_loss(
-            expected_q2, target_q)
+        q1_loss = self._mse_loss(expected_q1, target_q)
+        q2_loss = self._mse_loss(expected_q2, target_q)
+        loss = q1_loss + q2_loss
+
         self._critic_optim.zero_grad()
         loss.backward()
         self._critic_optim.step()
 
     def _update_actor(self, batch: Batch):
-        loss = -self._critic(batch.state, self._actor(batch.state))
+        loss = -torch.mean(
+            self._critic.eval_v1(batch.state, self._actor(batch.state)))
         self._actor_optim.zero_grad()
         loss.backward()
         self._actor_optim.step()

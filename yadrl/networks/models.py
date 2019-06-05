@@ -55,10 +55,10 @@ class DoubleCritic(nn.Module):
     def forward(self, *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
         return self._value_1(self._phi_1(*x)), self._value_2(self._phi_2(*x))
 
-    def eval_v1(self, *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
+    def eval_v1(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
         return self._value_1(self._phi_1(*x))
 
-    def eval_v2(self, *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
+    def eval_v2(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
         return self._value_2(self._phi_1(*x))
 
 

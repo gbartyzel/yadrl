@@ -52,6 +52,10 @@ class RingBuffer(object):
     def end(self) -> _DATA:
         return self._container[-1]
 
+    @property
+    def data(self) -> _DATA:
+        return self._container
+
     @staticmethod
     def _to_tuple(value: Union[int, Sequence[int]]) -> Tuple[int, ...]:
         if isinstance(value, int):

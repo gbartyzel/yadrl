@@ -1,6 +1,6 @@
 import multiprocessing as mp
 from multiprocessing import connection
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union, Sequence
 
 import gym
 from numpy import ndarray
@@ -65,7 +65,7 @@ class ParallelEnv(object):
         worker = WorkerEnv(worker_id, worker_conn, self._env_id)
         return worker, controller_conn
 
-    def step(self, actions: ndarray) -> Tuple[
+    def step(self, actions: Union[ndarray, Sequence[ndarray]]) -> Tuple[
         Tuple[ndarray, ...], Tuple[float, ...],
         Tuple[bool, ...], Tuple[Dict[str, Any], ...]]:
         result = (self._send_and_recv(conn, 'step', actions[i])

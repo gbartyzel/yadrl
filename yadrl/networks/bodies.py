@@ -44,7 +44,7 @@ class MLPNetwork(_BaseMLPNetwork):
         layers = (input_dim,) + hidden_dim
         for i in range(self._size):
             exec(
-                'self._dense_{} = nn.Linear({}, {}])'.format(
+                'self._dense_{} = nn.Linear({}, {})'.format(
                     i, layers[i], layers[i + 1]))
 
     def forward(self, *x: Sequence[torch.Tensor]) -> torch.Tensor:

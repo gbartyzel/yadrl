@@ -29,7 +29,7 @@ class GaussianNoise(object):
             return torch.normal(mean=self._mean,
                                 std=torch.ones(self._dim) * self._sigma)
         return np.random.normal(loc=self._mean, scale=self._sigma,
-                                dim=self._dim)
+                                size=self._dim)
 
 
 class AdaptiveGaussianNoise(GaussianNoise):
@@ -57,7 +57,7 @@ class AdaptiveGaussianNoise(GaussianNoise):
             return torch.normal(mean=self._mean,
                                 std=torch.ones(self._dim) * self._sigma)
         return np.random.normal(loc=self._mean, scale=self._sigma,
-                                dim=self._dim)
+                                size=self._dim)
 
 
 class OUNoise(AdaptiveGaussianNoise):
