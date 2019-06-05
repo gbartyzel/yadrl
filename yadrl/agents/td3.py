@@ -47,6 +47,8 @@ class TD3(BaseOffPolicy):
         self.load()
         self._target_actor.load_state_dict(self._actor.state_dict())
         self._target_critic.load_state_dict(self._critic.state_dict())
+        self._target_actor.eval()
+        self._target_critic.eval()
 
         self._noise = GaussianNoise(self._action_dim, sigma=noise_std)
         self._target_noise = GaussianNoise(
@@ -79,11 +81,11 @@ class TD3(BaseOffPolicy):
 
         noise = self._target_noise().clamp(
             *self._target_noise_limit).to(self._device)
-        next_action = self._target_actor(batch.next_state)
-        next_action = torch.clamp(next_action + noise, *self._action_limit)
+        next_action = self._target_actor(batch.next_state) + noise
+        next_action = next_action.clamp(*self._action_limit)
 
         target_next_qs = self._target_critic(batch.next_state, next_action)
-        target_next_q = torch.min(target_next_qs).view(-1, 1).detach()
+        target_next_q = torch.min(*target_next_qs).view(-1, 1).detach()
         target_q = (batch.reward + mask * self._discount ** self._n_step
                     * target_next_q)
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
@@ -97,8 +99,8 @@ class TD3(BaseOffPolicy):
         self._critic_optim.step()
 
     def _update_actor(self, batch: Batch):
-        loss = -torch.mean(
-            self._critic.eval_v1(batch.state, self._actor(batch.state)))
+        loss = -self._critic.eval_v1(
+            batch.state, self._actor(batch.state)).mean()
         self._actor_optim.zero_grad()
         loss.backward()
         self._actor_optim.step()
