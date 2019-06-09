@@ -1,5 +1,5 @@
 import os
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 import numpy as np
 import torch
@@ -15,27 +15,34 @@ class SAC(BaseOffPolicy):
     def __init__(self,
                  actor_phi: nn.Module,
                  critic_phi: nn.Module,
-                 lrate: float,
+                 actor_lrate: float,
+                 critic_lrate: float,
+                 alpha_lrate: float,
+                 alpha: Optional[float] = 0.0,
+                 alpha_tuning: bool = True,
                  **kwargs):
 
         super(SAC, self).__init__(**kwargs)
         self._actor = GaussianActor(
             actor_phi, self._action_dim, False, True).to(self._device)
-        self._actor_optim = optim.Adam(self._actor.parameters(), lr=lrate)
+        self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
 
         self._critic = DoubleCritic(
             (critic_phi, critic_phi)).to(self._device)
         self._target_critic = DoubleCritic(
             (critic_phi, critic_phi)).to(self._device)
         self._critic_1_optim = optim.Adam(
-            self._critic.net_1_parameters(), lr=lrate)
+            self._critic.net_1_parameters(), lr=critic_lrate)
         self._critic_2_optim = optim.Adam(
-            self._critic.net_2_parameters(), lr=lrate)
+            self._critic.net_2_parameters(), lr=critic_lrate)
 
-        self._target_entropy = -np.prod(self._action_dim)
-        self._log_alpha = torch.zeros(
-            1, requires_grad=True, device=self._device)
-        self._alpha_optim = optim.Adam([self._log_alpha], lr=lrate)
+        self._alpha_tuning = alpha_tuning
+        if alpha_tuning:
+            self._target_entropy = -np.prod(self._action_dim)
+            self._log_alpha = torch.zeros(
+                1, requires_grad=True, device=self._device)
+            self._alpha_optim = optim.Adam([self._log_alpha], lr=alpha_lrate)
+        self._alpha = alpha
 
         self.load()
         self._target_critic.load_state_dict(self._critic.state_dict())
@@ -58,7 +65,7 @@ class SAC(BaseOffPolicy):
                           self._target_critic.parameters())
 
     def _compute_loses(self, batch: Batch):
-        alpha = torch.exp(self._log_alpha)
+        self._alpha = torch.exp(self._log_alpha)
         mask = 1.0 - batch.done
 
         with torch.no_grad():
@@ -66,9 +73,8 @@ class SAC(BaseOffPolicy):
                                                       reparameterize=True)
             target_next_q = torch.min(
                 *self._target_critic(batch.next_state, next_action))
-            target_next_v = target_next_q - alpha * log_prob
-            target_q = (batch.reward + mask * self._discount ** self._n_step
-                        * target_next_v)
+            target_next_v = target_next_q - self._alpha * log_prob
+            target_q = self._td_target(batch.reward, mask, target_next_v)
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 
         q1_loss = self._mse_loss(expected_q1, target_q)
@@ -76,10 +82,13 @@ class SAC(BaseOffPolicy):
 
         action, log_prob, _, _ = self._actor(batch.state, reparameterize=True)
         target_log_prob = torch.min(*self._critic(batch.state, action))
-        policy_loss = torch.mean(alpha * log_prob - target_log_prob)
+        policy_loss = torch.mean(self._alpha * log_prob - target_log_prob)
 
-        alpha_loss = torch.mean(
-            -self._log_alpha * (log_prob + self._target_entropy).detach())
+        if self._alpha_tuning:
+            alpha_loss = torch.mean(
+                -self._log_alpha * (log_prob + self._target_entropy).detach())
+        else:
+            alpha_loss = 0.0
 
         return q1_loss, q2_loss, policy_loss, alpha_loss
 
@@ -97,9 +106,10 @@ class SAC(BaseOffPolicy):
         policy_loss.backward()
         self._actor_optim.step()
 
-        self._alpha_optim.zero_grad()
-        alpha_loss.backward()
-        self._alpha_optim.step()
+        if self._alpha_tuning:
+            self._alpha_optim.zero_grad()
+            alpha_loss.backward()
+            self._alpha_optim.step()
 
     def load(self) -> NoReturn:
         if os.path.isfile(self._checkpoint):
@@ -109,7 +119,7 @@ class SAC(BaseOffPolicy):
             print('Model found and loaded!')
             return
         if not os.path.isdir(os.path.split(self._checkpoint)[0]):
-            os.mkdir(os.path.split(self._checkpoint)[0])
+            os.makedirs(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
     def save(self):

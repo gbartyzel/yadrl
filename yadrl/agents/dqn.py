@@ -66,8 +66,7 @@ class DQN(BaseOffPolicy):
             target_next_q = self._target_model(
                 batch.next_state).max(1)[0].view(-1, 1)
 
-        target_q = (batch.reward + mask * self._discount ** self._n_step
-                    * target_next_q.detach())
+        target_q = self._td_target(batch.reward, mask, target_next_q)
         expected_q = self._model(batch.state).gather(1, batch.action.long())
         loss = self._mse_loss(expected_q, target_q)
 
@@ -88,7 +87,7 @@ class DQN(BaseOffPolicy):
             print('Model found and loaded!')
             return
         if not os.path.isdir(os.path.split(self._checkpoint)[0]):
-            os.mkdir(os.path.split(self._checkpoint)[0])
+            os.makedirs(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
     def save(self):

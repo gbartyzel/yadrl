@@ -86,8 +86,7 @@ class TD3(BaseOffPolicy):
 
         target_next_qs = self._target_critic(batch.next_state, next_action)
         target_next_q = torch.min(*target_next_qs).view(-1, 1).detach()
-        target_q = (batch.reward + mask * self._discount ** self._n_step
-                    * target_next_q)
+        target_q = self._td_target(batch.reward, mask, target_next_q)
         expected_q1, expected_q2 = self._critic(batch.state, batch.action)
 
         q1_loss = self._mse_loss(expected_q1, target_q)
@@ -113,7 +112,7 @@ class TD3(BaseOffPolicy):
             print('Model found and loaded!')
             return
         if not os.path.isdir(os.path.split(self._checkpoint)[0]):
-            os.mkdir(os.path.split(self._checkpoint)[0])
+            os.makedirs(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
     def save(self):

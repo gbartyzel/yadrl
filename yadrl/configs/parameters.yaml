@@ -1,0 +1,63 @@
+dqn:
+  lrate: 0.0003
+  discount_factor: 0.99
+  polyak_factor: 0.005
+  n_step: 1
+  epsilon_decay_factor: 0.9999
+  epsilon_min: 0.01
+  use_soft_update: True
+  use_double_q: True
+  use_dueling: True
+  memory_capacity: 50000
+  batch_size: 64
+  warm_up_steps: 10000
+  update_frequency: 1
+  logdir: "./output/dqn"
+ddpg:
+  actor_lrate: 0.0001
+  critic_lrate: 0.001
+  l2_reg_value: 0.001
+  discount_factor: 0.99
+  polyak_factor: 0.005
+  n_step: 1
+  action_bounds: [-1.0, 1.0]
+  noise_type: "ou"
+  mean: 0.0
+  sigma: 0.2
+  sigma_min: 0.0
+  n_step_annealing: 1000000
+  theta: 0.15
+  dt: 0.01
+  memory_capacity: 1000000
+  batch_size: 64
+  warm_up_steps: 10000
+  update_frequency: 1
+  logdir: "./output/ddpg"
+td3:
+  actor_lrate: 0.001
+  critic_lrate: 0.001
+  discount_factor: 0.99
+  polyak_factor: 0.005
+  n_step: 1
+  action_limit: [-1.0, 1.0]
+  target_noise_limit: [-0.5, 0.5]
+  noise_std: 0.1
+  target_noise_std: 0.2
+  policy_update_frequency: 2
+  memory_capacity: 1000000
+  batch_size: 100
+  warm_up_steps: 10000
+  update_frequency: 1
+  logdir: "./output/td3"
+sac:
+  actor_lrate: 0.001
+  critic_lrate: 0.001
+  alpha_lrate: 0.001
+  discount_factor: 0.99
+  polyak_factor: 0.005
+  n_step: 1
+  memory_capacity: 1000000
+  batch_size: 256
+  warm_up_steps: 10000
+  update_frequency: 1
+  logdir: "./output/sac"

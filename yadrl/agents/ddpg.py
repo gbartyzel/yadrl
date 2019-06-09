@@ -1,5 +1,5 @@
 import os
-from typing import Union, Sequence, NoReturn
+from typing import Union, Sequence, NoReturn, Optional
 
 import numpy as np
 import torch
@@ -7,7 +7,10 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.common.exploration_noise import GaussianNoise
+from yadrl.common.exploration_noise import (
+    GaussianNoise,
+    AdaptiveGaussianNoise,
+    OUNoise)
 from yadrl.common.replay_memory import Batch
 from yadrl.networks import Critic, DeterministicActor
 
@@ -16,16 +19,22 @@ class DDPG(BaseOffPolicy):
     def __init__(self,
                  actor_phi: nn.Module,
                  critic_phi: nn.Module,
-                 noise: GaussianNoise,
                  actor_lrate: float,
                  critic_lrate: float,
                  l2_reg_value: float,
-                 action_bounds: Union[Sequence[float], np.ndarray],
+                 action_limit: Union[Sequence[float], np.ndarray],
+                 noise_type: Optional[str] = "ou",
+                 mean: Optional[float] = 0.0,
+                 sigma: Optional[float] = 0.2,
+                 sigma_min: Optional[float] = 0.0,
+                 n_step_annealing: Optional[float] = 1e6,
+                 theta: Optional[float] = 0.15,
+                 dt: Optional[float] = 0.01,
                  **kwargs):
         super(DDPG, self).__init__(**kwargs)
-        if np.shape(action_bounds) != (2,):
+        if np.shape(action_limit) != (2,):
             raise ValueError
-        self._action_bounds = action_bounds
+        self._action_limit = action_limit
 
         self._actor = DeterministicActor(actor_phi, self._action_dim, True).to(
             self._device)
@@ -42,7 +51,8 @@ class DDPG(BaseOffPolicy):
         self._target_actor.load_state_dict(self._actor.state_dict())
         self._target_critic.load_state_dict(self._critic.state_dict())
 
-        self._noise = noise
+        self._noise = self._get_noise(noise_type, mean, sigma, sigma_min,
+                                      theta, n_step_annealing, dt)
 
     def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().to(self._device)
@@ -52,7 +62,7 @@ class DDPG(BaseOffPolicy):
         self._actor.eval()
 
         if train:
-            action = torch.clamp(action + self._noise(), *self._action_bounds)
+            action = torch.clamp(action + self._noise(), *self._action_limit)
         return action.cpu().numpy()
 
     def reset(self):
@@ -74,8 +84,7 @@ class DDPG(BaseOffPolicy):
         target_next_q = self._target_critic(
             batch.next_state, next_action).view(-1, 1).detach()
 
-        target_q = (batch.reward + mask * self._discount ** self._n_step
-                    * target_next_q)
+        target_q = self._td_target(batch.reward, mask, target_next_q)
         expected_q = self._critic(batch.state, batch.action)
 
         loss = self._mse_loss(expected_q, target_q)
@@ -97,7 +106,7 @@ class DDPG(BaseOffPolicy):
             print('Model found and loaded!')
             return
         if not os.path.isdir(os.path.split(self._checkpoint)[0]):
-            os.mkdir(os.path.split(self._checkpoint)[0])
+            os.makedirs(os.path.split(self._checkpoint)[0])
         print('Model not found!')
 
     def save(self):
@@ -105,4 +114,26 @@ class DDPG(BaseOffPolicy):
             'actor': self._actor.state_dict(),
             'critic': self._critic.state_dict()
         }
-        torch.save(state_dicts, self._checkpoint)
+        torch.save(state_dicts, self._checkpoint.format(self.step))
+
+    def _get_noise(self, noise_type: str,
+                   mean: float,
+                   sigma: float,
+                   sigma_min: float,
+                   theta: float,
+                   n_step_annealing: float,
+                   dt: float) -> GaussianNoise:
+
+        if noise_type == "normal":
+            return GaussianNoise(
+                self._action_dim, mean=mean, sigma=sigma)
+        elif noise_type == "adaptive":
+            return AdaptiveGaussianNoise(
+                self._action_dim, mean=mean, sigma=sigma, sigma_min=sigma_min,
+                n_step_annealing=n_step_annealing)
+        elif noise_type == "ou":
+            return OUNoise(
+                self._action_dim, mean=mean, theta=theta, sigma=sigma,
+                sigma_min=sigma_min, n_step_annealing=n_step_annealing, dt=dt)
+        else:
+            raise ValueError

@@ -37,7 +37,7 @@ class BaseOffPolicy(abc.ABC):
         self._warm_up_steps = warm_up_steps
         self._update_frequency = update_frequency
 
-        self._checkpoint = os.path.join(logdir, 'checkpoint.pth')
+        self._checkpoint = os.path.join(logdir, 'checkpoint_{}.pth')
 
         self._memory = ReplayMemory(memory_capacity, state_dim, action_dim,
                                     True)
@@ -74,6 +74,12 @@ class BaseOffPolicy(abc.ABC):
         for param, t_param in zip(params, target_params):
             t_param.data.copy_(
                 t_param.data * (1.0 - self._polyak) + param.data * self._polyak)
+
+    def _td_target(self,
+                   reward: torch.Tensor,
+                   mask: torch.Tensor,
+                   next_value: torch.Tensor) -> torch.Tensor:
+        return reward + mask * self._discount ** self._n_step * next_value
 
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):
