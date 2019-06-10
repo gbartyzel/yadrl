@@ -1,5 +1,6 @@
 import abc
 import os
+import json
 from typing import Any, Union
 
 import numpy as np
@@ -10,6 +11,17 @@ from yadrl.common.replay_memory import ReplayMemory
 
 
 class BaseOffPolicy(abc.ABC):
+    _SUMMARY_PROTO = {
+        "recent": "",
+        "previous": {
+            "1": "",
+            "2": "",
+            "3": "",
+            "4": "",
+            "5": "",
+        }
+    }
+
     def __init__(self,
                  state_dim: int,
                  action_dim: int,
@@ -38,6 +50,8 @@ class BaseOffPolicy(abc.ABC):
         self._update_frequency = update_frequency
 
         self._checkpoint = os.path.join(logdir, 'checkpoint_{}.pth')
+        self._checkpoint_summary = os.path.join(
+            logdir, 'checkpoint_summary.json')
 
         self._memory = ReplayMemory(memory_capacity, state_dim, action_dim,
                                     True)
@@ -81,10 +95,21 @@ class BaseOffPolicy(abc.ABC):
                    next_value: torch.Tensor) -> torch.Tensor:
         return reward + mask * self._discount ** self._n_step * next_value
 
+    def _create_checkpoint_summary(self):
+        if not os.path.isfile(self._checkpoint_summary):
+            with open(self._checkpoint_summary, 'w') as summary_file:
+                json.dump(self._SUMMARY_PROTO, summary_file)
+            return
+
+
+    def _update_checkpoint_summary(self):
+        summary = open(self._checkpoint_summary, 'a')
+
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):
         target_model.load_state_dict(model.state_dict())
 
     @staticmethod
-    def _mse_loss(prediction, target):
+    def _mse_loss(prediction: torch.Tensor,
+                  target: torch.Tensor) -> torch.Tensor:
         return torch.mean(0.5 * (prediction - target).pow(2))

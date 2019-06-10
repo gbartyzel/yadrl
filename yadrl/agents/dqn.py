@@ -91,4 +91,5 @@ class DQN(BaseOffPolicy):
         print('Model not found!')
 
     def save(self):
-        torch.save(self._model.state_dict(), self._checkpoint)
+
+        torch.save(self._model.state_dict(), self._checkpoint.format(self.step))
