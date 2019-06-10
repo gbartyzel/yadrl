@@ -82,14 +82,10 @@ class DQN(BaseOffPolicy):
             self._hard_update(self._model, self._target_model)
 
     def load(self) -> NoReturn:
-        if os.path.isfile(self._checkpoint):
-            self._model.load_state_dict(torch.load(self._checkpoint))
-            print('Model found and loaded!')
-            return
-        if not os.path.isdir(os.path.split(self._checkpoint)[0]):
-            os.makedirs(os.path.split(self._checkpoint)[0])
-        print('Model not found!')
+        model = self._checkpoint_manager.load()
+        if model:
+            self._model.load_state_dict(model)
 
     def save(self):
+        self._checkpoint_manager.save(self._model.state_dict(), self.step)
 
-        torch.save(self._model.state_dict(), self._checkpoint.format(self.step))

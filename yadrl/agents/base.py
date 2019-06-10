@@ -1,6 +1,4 @@
 import abc
-import os
-import json
 from typing import Any, Union
 
 import numpy as np
@@ -8,21 +6,12 @@ import torch
 import torch.nn as nn
 
 from yadrl.common.replay_memory import ReplayMemory
+from yadrl.common.checkpoint_manager import CheckpointManager
 
 
 class BaseOffPolicy(abc.ABC):
-    _SUMMARY_PROTO = {
-        "recent": "",
-        "previous": {
-            "1": "",
-            "2": "",
-            "3": "",
-            "4": "",
-            "5": "",
-        }
-    }
-
     def __init__(self,
+                 agent_type: str,
                  state_dim: int,
                  action_dim: int,
                  discount_factor: float,
@@ -49,9 +38,7 @@ class BaseOffPolicy(abc.ABC):
         self._warm_up_steps = warm_up_steps
         self._update_frequency = update_frequency
 
-        self._checkpoint = os.path.join(logdir, 'checkpoint_{}.pth')
-        self._checkpoint_summary = os.path.join(
-            logdir, 'checkpoint_summary.json')
+        self._checkpoint_manager = CheckpointManager(agent_type, logdir)
 
         self._memory = ReplayMemory(memory_capacity, state_dim, action_dim,
                                     True)
@@ -94,16 +81,6 @@ class BaseOffPolicy(abc.ABC):
                    mask: torch.Tensor,
                    next_value: torch.Tensor) -> torch.Tensor:
         return reward + mask * self._discount ** self._n_step * next_value
-
-    def _create_checkpoint_summary(self):
-        if not os.path.isfile(self._checkpoint_summary):
-            with open(self._checkpoint_summary, 'w') as summary_file:
-                json.dump(self._SUMMARY_PROTO, summary_file)
-            return
-
-
-    def _update_checkpoint_summary(self):
-        summary = open(self._checkpoint_summary, 'a')
 
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):

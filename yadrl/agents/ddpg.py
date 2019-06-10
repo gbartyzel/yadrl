@@ -99,22 +99,17 @@ class DDPG(BaseOffPolicy):
         self._actor_optim.step()
 
     def load(self) -> NoReturn:
-        if os.path.isfile(self._checkpoint):
-            models = torch.load(self._checkpoint)
-            self._actor.load_state_dict(models['actor'])
-            self._critic.load_state_dict(models['critic'])
-            print('Model found and loaded!')
-            return
-        if not os.path.isdir(os.path.split(self._checkpoint)[0]):
-            os.makedirs(os.path.split(self._checkpoint)[0])
-        print('Model not found!')
+        model = self._checkpoint_manager.load()
+        if model:
+            self._actor.load_state_dict(model['actor'])
+            self._critic.load_state_dict(model['critic'])
 
     def save(self):
         state_dicts = {
             'actor': self._actor.state_dict(),
             'critic': self._critic.state_dict()
         }
-        torch.save(state_dicts, self._checkpoint.format(self.step))
+        self._checkpoint_manager.save(state_dicts, self.step)
 
     def _get_noise(self, noise_type: str,
                    mean: float,
