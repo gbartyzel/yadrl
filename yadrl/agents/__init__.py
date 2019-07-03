@@ -1,4 +1,4 @@
-__all__ = ['DDPG', 'DQN', 'TD3']
+__all__ = ['DDPG', 'DQN', 'TD3', 'SAC']
 
 from yadrl.agents.dqn import DQN
 from yadrl.agents.ddpg import DDPG

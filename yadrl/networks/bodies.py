@@ -12,10 +12,11 @@ def hidden_init(x: nn.Parameter):
     return -val, val
 
 
-def expand_input(*x: Sequence[torch.Tensor]):
-    if all([len(y.shape) == 1 for y in x]):
-        x = tuple(y.view(1, -1) for y in x)
-    return torch.cat(x, dim=1)
+def init(x: nn.Module):
+    classname = x.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.orthogonal_(x.weight.data, np.sqrt(2))
+        nn.init.constant_(x.bias.data, 0.0)
 
 
 class _BaseMLPNetwork(nn.Module):
@@ -36,22 +37,23 @@ class MLPNetwork(_BaseMLPNetwork):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  hidden_dim: Tuple[int, ...],
-                 activation_fn: Callable = F.relu):
+                 activation_fn: nn.Module = nn.ReLU()):
         super(MLPNetwork, self).__init__(input_dim, hidden_dim[-1],
                                          activation_fn)
 
         self._size = len(hidden_dim)
+        self._body = nn.Sequential()
         layers = (input_dim,) + hidden_dim
         for i in range(self._size):
-            exec(
-                'self._dense_{} = nn.Linear({}, {})'.format(
-                    i, layers[i], layers[i + 1]))
+            self._body.add_module('Linear_{}'.format(i),
+                                  nn.Linear(layers[i], layers[i + 1]))
+            self._body.add_module('Activation_{}'.format(i), activation_fn)
+        self._body.apply(init)
 
-    def forward(self, *x: Sequence[torch.Tensor]) -> torch.Tensor:
-        x = expand_input(*x)
-        for i in range(self._size):
-            x = self._activation_fn(eval('self._dense_{}(x)'.format(i)))
-        return x
+    def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
+        if isinstance(x, tuple):
+            x = torch.cat(x, dim=1)
+        return self._body(x)
 
 
 class DDPGMLPNetwork(_BaseMLPNetwork):
@@ -78,12 +80,10 @@ class DDPGMLPNetwork(_BaseMLPNetwork):
         for i in range(self._size):
             weight_vals = hidden_init(eval('self._dense_{}.weight'.format(i)))
             eval('self._dense_{}.weight.data.uniform_(*weight_vals)'.format(i))
-            bias_vals = hidden_init(eval('self._dense_{}.bias'.format(i)))
-            eval('self._dense_{}.bias.data.uniform_(*bias_vals)'.format(i))
 
     def forward(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         for i in range(self._size):
             if i == 1:
-                x = expand_input(x, u)
+                x = torch.cat((x, u), dim=1)
             x = self._activation_fn(eval('self._dense_{}(x)'.format(i)))
         return x

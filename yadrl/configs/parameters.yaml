@@ -50,9 +50,9 @@ td3:
   update_frequency: 1
   logdir: "./output/td3"
 sac:
-  actor_lrate: 0.001
-  critic_lrate: 0.001
-  alpha_lrate: 0.001
+  policy_lrate: 0.0003
+  q_values_lrate: 0.0003
+  alpha_lrate: 0.0003
   discount_factor: 0.99
   polyak_factor: 0.005
   n_step: 1

@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Dict
 
 import torch
 import torch.nn as nn
@@ -13,65 +13,67 @@ class DQNModel(nn.Module):
         self._dueling = dueling
 
         self._phi = phi
-        self._advantage = nn.Linear(self._phi.output_dim, output_dim)
+        self._advantage = ValueHead(self._phi.output_dim, output_dim)
         if dueling:
             self._value = ValueHead(self._phi.output_dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         x = self._phi(x)
-        advantage = self._advantage(x)
+        adv = self._advantage(x)
+        q_val = adv
         if self._dueling:
             value = self._value(x)
-            return value + advantage - advantage.mean(dim=1, keepdim=True)
-        return advantage
+            q_val = value + adv['value'] + adv['value'].mean(-1, keepdim=True)
+        return q_val
 
 
 class Critic(nn.Module):
-    def __init__(self, phi, ddpg_init=False):
+    def __init__(self, phi, fan_init=False):
         super(Critic, self).__init__()
         self._phi = phi
-        self._value = ValueHead(self._phi.output_dim, ddpg_init)
+        self._value = ValueHead(self._phi.output_dim, fan_init)
 
     def forward(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
         return self._value(self._phi(x))
 
 
 class DoubleCritic(nn.Module):
-    def __init__(self, phi: Tuple[nn.Module, nn.Module], ddpg_init=False):
+    def __init__(self, phi: Tuple[nn.Module, nn.Module], fan_init=False):
         super(DoubleCritic, self).__init__()
         self._phi_1 = phi[0]
         self._phi_2 = phi[1]
-        self._value_1 = ValueHead(self._phi_1.output_dim, ddpg_init)
-        self._value_2 = ValueHead(self._phi_2.output_dim, ddpg_init)
+        self._value_1 = ValueHead(self._phi_1.output_dim, fan_init=fan_init)
+        self._value_2 = ValueHead(self._phi_2.output_dim, fan_init=fan_init)
 
-    def net_1_parameters(self):
+    def q1_parameters(self):
         return tuple(self._phi_1.parameters()) \
                + tuple(self._value_1.parameters())
 
-    def net_2_parameters(self):
+    def q2_parameters(self):
         return tuple(self._phi_2.parameters()) \
                + tuple(self._value_2.parameters())
 
-    def forward(self, *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
-        return self._value_1(self._phi_1(*x)), self._value_2(self._phi_2(*x))
+    def forward(self,
+                *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
+        return self._value_1(self._phi_1(x)), self._value_2(self._phi_2(x))
 
     def eval_v1(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._value_1(self._phi_1(*x))
+        return self._value_1(self._phi_1(x))
 
     def eval_v2(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._value_2(self._phi_1(*x))
+        return self._value_2(self._phi_1(x))
 
 
 class DeterministicActor(nn.Module):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
-                 ddpg_init: bool = False,
+                 fan_init: bool = False,
                  activation_fn: Callable = torch.tanh):
         super(DeterministicActor, self).__init__()
         self._phi = phi
         self._head = DeterministicPolicyHead(
-            self._phi.output_dim, output_dim, ddpg_init, activation_fn)
+            self._phi.output_dim, output_dim, fan_init, activation_fn)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self._head(self._phi(x))
@@ -81,20 +83,22 @@ class GaussianActor(nn.Module):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
-                 independent_std: bool = True,
-                 squash: bool = False,
-                 std_limits: Tuple[float, float] = (-20.0, 2.0)):
+                 std_limits: Tuple[float, float] = (-20.0, 2.0),
+                 independent_std: bool = False,
+                 squash: bool = True,
+                 reparameterize: bool = True,
+                 fan_init: bool = True):
         super(GaussianActor, self).__init__()
         self._phi = phi
         self._head = GaussianPolicyHead(
-            self._phi.output_dim, output_dim, independent_std, squash,
-            std_limits)
+            self._phi.output_dim, output_dim, std_limits,
+            independent_std, squash, reparameterize, fan_init)
 
     def forward(self,
                 x: torch.Tensor,
                 raw_action: Optional[torch.Tensor] = None,
-                reparameterize: bool = False) -> Tuple[torch.Tensor, ...]:
-        return self._head.sample(self._phi(x), raw_action, reparameterize)
+                deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
+        return self._head.sample(self._phi(x), raw_action, deterministic)
 
 
 class CategoricalActor(nn.Module):
@@ -105,8 +109,8 @@ class CategoricalActor(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                action: Optional[torch.Tensor] = None) -> Tuple[
-        torch.Tensor, ...]:
+                action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
+                                                                ...]:
         return self._head.sample(self._phi(x), action)
 
 
@@ -119,8 +123,8 @@ class CategoricalActorCritic(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                action: Optional[torch.Tensor] = None) -> Tuple[
-        torch.Tensor, ...]:
+                action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
+                                                                ...]:
         x = self._phi(x)
         value = self._value(x)
         action, log_prob, entropy = self._policy.sample(x, action)
@@ -131,22 +135,22 @@ class GaussianActorCritic(nn.Module):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
+                 std_limits: Tuple[float, float] = (-20.0, 2.0),
                  independent_std: bool = True,
                  squash: bool = True,
-                 std_limits: Tuple[float, float] = (-20.0, 2.0)):
+                 fan_init: bool = True):
         super(GaussianActorCritic, self).__init__()
         self._phi = phi
         self._value = ValueHead(self._phi.output_dim)
         self._policy = GaussianPolicyHead(
-            self._phi.output_dim, output_dim, independent_std, squash,
-            std_limits)
+            self._phi.output_dim, output_dim, std_limits,
+            independent_std, squash, fan_init)
 
     def forward(self,
                 x: torch.Tensor,
-                action: Optional[torch.Tensor] = None,
-                reparametrize: bool = False) -> Tuple[torch.Tensor, ...]:
+                action: Optional[torch.Tensor] = None, ) -> Tuple[torch.Tensor,
+                                                                  ...]:
         x = self._phi(x)
         value = self._value(x)
-        action, log_prob, entropy, raw_action = self._policy.sample(
-            x, action, reparametrize)
-        return action, log_prob, entropy, raw_action, value
+        action, log_prob, entropy = self._policy.sample(x, action)
+        return action, log_prob, entropy, value

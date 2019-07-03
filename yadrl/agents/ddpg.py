@@ -1,4 +1,3 @@
-import os
 from typing import Union, Sequence, NoReturn, Optional
 
 import numpy as np
@@ -17,10 +16,10 @@ from yadrl.networks import Critic, DeterministicActor
 
 class DDPG(BaseOffPolicy):
     def __init__(self,
-                 actor_phi: nn.Module,
-                 critic_phi: nn.Module,
-                 actor_lrate: float,
-                 critic_lrate: float,
+                 pi_phi: nn.Module,
+                 qv_phi: nn.Module,
+                 pi_lrate: float,
+                 qv_lrate: float,
                  l2_reg_value: float,
                  action_limit: Union[Sequence[float], np.ndarray],
                  noise_type: Optional[str] = "ou",
@@ -31,35 +30,35 @@ class DDPG(BaseOffPolicy):
                  theta: Optional[float] = 0.15,
                  dt: Optional[float] = 0.01,
                  **kwargs):
-        super(DDPG, self).__init__(**kwargs)
+        super(DDPG, self).__init__(agent_type='ddpg', **kwargs)
         if np.shape(action_limit) != (2,):
             raise ValueError
         self._action_limit = action_limit
 
-        self._actor = DeterministicActor(actor_phi, self._action_dim, True).to(
+        self._pi = DeterministicActor(pi_phi, self._action_dim, True).to(
             self._device)
-        self._actor_optim = optim.Adam(self._actor.parameters(), lr=actor_lrate)
-        self._target_actor = DeterministicActor(
-            actor_phi, self._action_dim, True).to(self._device)
+        self._pi_optim = optim.Adam(self._pi.parameters(), lr=pi_lrate)
+        self._target_pi = DeterministicActor(
+            pi_phi, self._action_dim, True).to(self._device)
 
-        self._critic = Critic(critic_phi, True)
-        self._critic_optim = optim.Adam(
-            self._critic.parameters(), critic_lrate, weight_decay=l2_reg_value)
-        self._target_critic = Critic(critic_phi, True).to(self._device)
+        self._qv = Critic(qv_phi, True)
+        self._qv_optim = optim.Adam(
+            self._qv.parameters(), qv_lrate, weight_decay=l2_reg_value)
+        self._target_qv = Critic(qv_phi, True).to(self._device)
 
         self.load()
-        self._target_actor.load_state_dict(self._actor.state_dict())
-        self._target_critic.load_state_dict(self._critic.state_dict())
+        self._target_pi.load_state_dict(self._pi.state_dict())
+        self._target_qv.load_state_dict(self._qv.state_dict())
 
         self._noise = self._get_noise(noise_type, mean, sigma, sigma_min,
                                       theta, n_step_annealing, dt)
 
     def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().to(self._device)
-        self._actor.eval()
+        self._pi.eval()
         with torch.no_grad():
-            action = self._actor(state)
-        self._actor.eval()
+            action = self._pi(state)
+        self._pi.eval()
 
         if train:
             action = torch.clamp(action + self._noise(), *self._action_limit)
@@ -73,41 +72,39 @@ class DDPG(BaseOffPolicy):
         self._update_critic(batch)
         self._update_actor(batch)
 
-        self._soft_update(self._actor.parameters(),
-                          self._target_actor.parameters())
-        self._soft_update(self._critic.parameters(),
-                          self._target_critic.parameters())
+        self._soft_update(self._pi.parameters(), self._target_pi.parameters())
+        self._soft_update(self._qv.parameters(), self._target_qv.parameters())
 
     def _update_critic(self, batch: Batch):
         mask = 1.0 - batch.done
-        next_action = self._target_actor(batch.next_state)
-        target_next_q = self._target_critic(
+        next_action = self._target_pi(batch.next_state)
+        target_next_q = self._target_qv(
             batch.next_state, next_action).view(-1, 1).detach()
 
         target_q = self._td_target(batch.reward, mask, target_next_q)
-        expected_q = self._critic(batch.state, batch.action)
+        expected_q = self._qv(batch.state, batch.action)
 
         loss = self._mse_loss(expected_q, target_q)
-        self._critic_optim.zero_grad()
+        self._qv_optim.zero_grad()
         loss.backward()
-        self._critic_optim.step()
+        self._qv_optim.step()
 
     def _update_actor(self, batch: Batch):
-        loss = -self._critic(batch.state, self._actor(batch.state))
-        self._actor_optim.zero_grad()
+        loss = -self._qv(batch.state, self._pi(batch.state))
+        self._pi_optim.zero_grad()
         loss.backward()
-        self._actor_optim.step()
+        self._pi_optim.step()
 
     def load(self) -> NoReturn:
         model = self._checkpoint_manager.load()
         if model:
-            self._actor.load_state_dict(model['actor'])
-            self._critic.load_state_dict(model['critic'])
+            self._pi.load_state_dict(model['actor'])
+            self._qv.load_state_dict(model['critic'])
 
     def save(self):
         state_dicts = {
-            'actor': self._actor.state_dict(),
-            'critic': self._critic.state_dict()
+            'actor': self._pi.state_dict(),
+            'critic': self._qv.state_dict()
         }
         self._checkpoint_manager.save(state_dicts, self.step)
 

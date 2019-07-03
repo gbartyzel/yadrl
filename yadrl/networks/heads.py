@@ -1,4 +1,4 @@
-from typing import Callable, Sequence, Optional, Tuple
+from typing import Callable, Sequence, Optional, Tuple, Dict
 
 import torch
 import torch.nn as nn
@@ -8,33 +8,36 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 
 
 class ValueHead(nn.Module):
-    def __init__(self, input_dim: int, ddpg_init: bool = False):
+    def __init__(self, input_dim: int,
+                 output_dim: int = 1,
+                 fan_init: bool = True):
         super(ValueHead, self).__init__()
-        self._value = nn.Linear(input_dim, 1)
+        self._value = nn.Linear(input_dim, output_dim)
 
-        if ddpg_init:
+        if fan_init:
             self._initialize_variables()
 
     def _initialize_variables(self):
         self._value.weight.data.uniform_(-3e-3, 3e-3)
         self._value.bias.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, x: torch.Tensor):
-        return self._value(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        value = self._value(x)
+        return value
 
 
 class DeterministicPolicyHead(nn.Module):
     def __init__(self,
                  input_dim: int,
                  output_dim: int,
-                 ddpg_init: bool = False,
+                 fan_init: bool = True,
                  activation_fn: Callable = torch.tanh):
         super(DeterministicPolicyHead, self).__init__()
         self._activation_fn = activation_fn
 
         self._action = nn.Linear(input_dim, output_dim)
 
-        if ddpg_init:
+        if fan_init:
             self._initialize_variables()
 
     def _initialize_variables(self):
@@ -42,29 +45,35 @@ class DeterministicPolicyHead(nn.Module):
         self._action.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        action = self._action(x)
         if self._activation_fn:
-            return self._activation_fn(self._action(x))
-        return self._action(x)
+            action = self._activation_fn(action)
+        return action
 
 
 class GaussianPolicyHead(nn.Module):
     def __init__(self,
                  input_dim: int,
                  output_dim: int,
+                 std_limits: Sequence[float] = (-20.0, 2.0),
                  independent_std: bool = True,
                  squash: bool = False,
-                 std_limits: Sequence[float] = (-20.0, 2.0)):
+                 reparameterize: bool = True,
+                 fan_init: bool = True):
         super(GaussianPolicyHead, self).__init__()
         self._independend_std = independent_std
         self._squash = squash
         self._std_limits = std_limits
+        self._reparameterize = reparameterize
 
         self._mean = nn.Linear(input_dim, output_dim)
         if independent_std:
             self._log_std = nn.Parameter(torch.zeros(1, output_dim))
         else:
             self._log_std = nn.Linear(input_dim, output_dim)
-        self._initialize_parameters()
+
+        if fan_init:
+            self._initialize_parameters()
 
     def _initialize_parameters(self):
         if self._independend_std:
@@ -83,13 +92,16 @@ class GaussianPolicyHead(nn.Module):
     def sample(self,
                x: torch.Tensor,
                raw_action: Optional[torch.Tensor] = None,
-               reparameterize: bool = True) -> Tuple[torch.Tensor, ...]:
+               deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
         mean, log_std = self.forward(x)
-        covariance = torch.diag_embed(torch.exp(log_std))
+        covariance = torch.diag_embed(log_std.exp())
         dist = MultivariateNormal(loc=mean, scale_tril=covariance)
 
         if not raw_action:
-            raw_action = dist.rsample() if reparameterize else dist.sample()
+            if self._reparameterize:
+                raw_action = dist.rsample()
+            else:
+                raw_action = dist.sample()
 
         action = torch.tanh(raw_action) if self._squash else raw_action
         log_prob = dist.log_prob(raw_action).unsqueeze(-1)
@@ -97,7 +109,9 @@ class GaussianPolicyHead(nn.Module):
             log_prob -= self._squash_correction(raw_action)
         entropy = dist.entropy().unsqueeze(-1)
 
-        return action, log_prob, entropy, torch.tanh(dist.mean)
+        if deterministic:
+            action = torch.tanh(dist.mean)
+        return action, log_prob, entropy
 
     @staticmethod
     def _squash_correction(action: torch.Tensor,

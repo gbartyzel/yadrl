@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 import os
 import re
@@ -54,7 +55,9 @@ class CheckpointManager(object):
         self._create_summary_directory(os.path.split(self._summary)[0])
         if not os.path.isfile(self._summary):
             with open(self._summary, 'w+') as summary_file:
-                json.dump(self._SUMMARY_PROTO, summary_file)
+                proto = deepcopy(self._SUMMARY_PROTO)
+                proto['agent_type'] = self._agent_type
+                json.dump(proto, summary_file)
             return
         self._validate_summary()
 

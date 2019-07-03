@@ -1,4 +1,3 @@
-import os
 import random
 from typing import NoReturn
 
@@ -21,7 +20,7 @@ class DQN(BaseOffPolicy):
                  use_soft_update: bool = True,
                  use_double_q: bool = False,
                  use_dueling: bool = False, **kwargs):
-        super(DQN, self).__init__(action_dim=1, **kwargs)
+        super(DQN, self).__init__(agent_type='dqn', action_dim=1, **kwargs)
         self._action_dim = action_dim
 
         self._use_double_q = use_double_q
@@ -31,27 +30,27 @@ class DQN(BaseOffPolicy):
         self._esp_decay_factor = epsilon_decay_factor
         self._eps_min = epsilon_min
 
-        self._model = DQNModel(
+        self._qv = DQNModel(
             phi, self._action_dim, use_dueling).to(self._device)
-        self._target_model = DQNModel(
+        self._target_qv = DQNModel(
             phi, self._action_dim, use_dueling).to(self._device)
 
         self.load()
-        self._target_model.load_state_dict(self._model.state_dict())
+        self._target_qv.load_state_dict(self._qv.state_dict())
 
-        self._optim = optim.Adam(self._model.parameters(), lr=lrate)
+        self._optim = optim.Adam(self._qv.parameters(), lr=lrate)
 
     def act(self, state: int, train: bool = False) -> np.ndarray:
         self._eps = max(self._eps * self._esp_decay_factor, self._eps_min)
-        state = torch.from_numpy(state).float().to(self._device)
+        state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
 
-        self._model.eval()
+        self._qv.eval()
         with torch.no_grad():
-            action = torch.argmax(self._model(state))
-        self._model.train()
+            action = torch.argmax(self._qv(state))
+        self._qv.train()
 
         if random.random() > self._eps or not train:
-            return action.cpu().numpy()
+            return action[0].cpu().numpy()
         return random.randint(0, self._action_dim - 1)
 
     def update(self):
@@ -59,15 +58,15 @@ class DQN(BaseOffPolicy):
         mask = 1.0 - batch.done
 
         if self._use_double_q:
-            next_action = self._model(batch.next_state).argmax(1).view(-1, 1)
-            target_next_q = self._target_model(
+            next_action = self._qv(batch.next_state).argmax(1).view(-1, 1)
+            target_next_q = self._target_qv(
                 batch.next_state).gather(1, next_action)
         else:
-            target_next_q = self._target_model(
+            target_next_q = self._target_qv(
                 batch.next_state).max(1)[0].view(-1, 1)
 
         target_q = self._td_target(batch.reward, mask, target_next_q)
-        expected_q = self._model(batch.state).gather(1, batch.action.long())
+        expected_q = self._qv(batch.state).gather(1, batch.action.long())
         loss = self._mse_loss(expected_q, target_q)
 
         self._optim.zero_grad()
@@ -75,17 +74,16 @@ class DQN(BaseOffPolicy):
         self._optim.step()
 
         if self._use_soft_update:
-            self._soft_update(self._model.parameters(),
-                              self._target_model.parameters())
+            self._soft_update(self._qv.parameters(),
+                              self._target_qv.parameters())
 
         if not self._use_soft_update and self.step % self._polyak == 0:
-            self._hard_update(self._model, self._target_model)
+            self._hard_update(self._qv, self._target_qv)
 
     def load(self) -> NoReturn:
         model = self._checkpoint_manager.load()
         if model:
-            self._model.load_state_dict(model)
+            self._qv.load_state_dict(model)
 
     def save(self):
-        self._checkpoint_manager.save(self._model.state_dict(), self.step)
-
+        self._checkpoint_manager.save(self._qv.state_dict(), self.step)
