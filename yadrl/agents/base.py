@@ -66,7 +66,7 @@ class BaseOffPolicy(abc.ABC):
                 next_state: Union[np.ndarray, torch.Tensor],
                 done: Any):
         self._memory.push(state, action, reward, next_state, done)
-        if self._memory.size > self._warm_up_steps:
+        if self._memory.size >= self._warm_up_steps:
             self.step += 1
             if self.step % self._update_frequency == 0:
                 self.update()

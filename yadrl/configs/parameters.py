@@ -36,7 +36,6 @@ class Parameters(object):
     @staticmethod
     def __load_config(path) -> Dict[str, Dict[str, Any]]:
         if not path:
-
             dir_path, script = os.path.split(os.path.realpath(__file__))
             path = os.path.join(dir_path, 'parameters.yaml')
         config_file = open(path, 'r')

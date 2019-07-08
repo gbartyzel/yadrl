@@ -13,21 +13,17 @@ class RingBuffer(object):
     TORCH_BACKEND = False
 
     def __init__(self, capacity: int, dimension: Union[int, Sequence[int]]):
-        self._backend = torch if RingBuffer.TORCH_BACKEND else np
         self._size = 0
         self._capacity = capacity
-        self._container = self._backend.zeros(
+        self._container = np.zeros(
             self._to_tuple(capacity) + self._to_tuple(dimension))
 
     def add(self, value: Any):
-        if RingBuffer.TORCH_BACKEND:
-            value = self._to_torch(value)
-
         if self._size < self._capacity:
             self._container[self._size, :] = value
             self._size += 1
         elif self._size == self._capacity:
-            self._container = self._backend.roll(self._container, -1, 0)
+            self._container = np.roll(self._container, -1, 0)
             self._container[self._capacity - 1, :] = value
         else:
             raise ValueError
@@ -35,9 +31,9 @@ class RingBuffer(object):
     def sample(self,
                idx: Union[Sequence[int], torch.Tensor],
                device: torch.device = torch.device('cpu')) -> _DATA:
-        batch = self._container[self._to_torch(idx).long(), :]
+        batch = self._container[idx]
         if RingBuffer.TORCH_BACKEND:
-            return batch.to(device)
+            return torch.from_numpy(batch).float().to(device)
         return batch
 
     @property
@@ -61,14 +57,6 @@ class RingBuffer(object):
         if isinstance(value, int):
             return value,
         return tuple(value)
-
-    @staticmethod
-    def _to_torch(value: Any, reshape: bool = False) -> torch.Tensor:
-        if not isinstance(value, np.ndarray):
-            value = np.asarray(value)
-        if reshape:
-            return torch.from_numpy(value).float().view(-1, 1)
-        return torch.from_numpy(value).float()
 
 
 class ReplayMemory(object):
@@ -102,7 +90,6 @@ class ReplayMemory(object):
                batch_size: int,
                device: torch.device = torch.device('cpu')) -> Batch:
         idxs = np.random.randint((self.size - 1), size=batch_size)
-
         batch = Batch(state=self._state_buffer.sample(idxs, device),
                       action=self._action_buffer.sample(idxs, device),
                       reward=self._reward_buffer.sample(idxs, device),

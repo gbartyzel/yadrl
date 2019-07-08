@@ -1,10 +1,13 @@
+from copy import deepcopy
 from typing import Callable, Optional, Tuple, Dict
 
 import torch
 import torch.nn as nn
 
-from yadrl.networks.heads import ValueHead, DeterministicPolicyHead, \
-    GaussianPolicyHead, CategoricalPolicyHead
+from .heads import CategoricalPolicyHead
+from .heads import DeterministicPolicyHead
+from .heads import GaussianPolicyHead
+from .heads import ValueHead
 
 
 class DQNModel(nn.Module):
@@ -12,25 +15,26 @@ class DQNModel(nn.Module):
         super(DQNModel, self).__init__()
         self._dueling = dueling
 
-        self._phi = phi
+        self._phi = deepcopy(phi)
         self._advantage = ValueHead(self._phi.output_dim, output_dim)
         if dueling:
             self._value = ValueHead(self._phi.output_dim)
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         x = self._phi(x)
+
         adv = self._advantage(x)
         q_val = adv
         if self._dueling:
             value = self._value(x)
-            q_val = value + adv['value'] + adv['value'].mean(-1, keepdim=True)
+            q_val = value + adv - adv.mean(dim=1, keepdim=True).expand_as(adv)
         return q_val
 
 
 class Critic(nn.Module):
     def __init__(self, phi, fan_init=False):
         super(Critic, self).__init__()
-        self._phi = phi
+        self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim, fan_init)
 
     def forward(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
@@ -40,8 +44,8 @@ class Critic(nn.Module):
 class DoubleCritic(nn.Module):
     def __init__(self, phi: Tuple[nn.Module, nn.Module], fan_init=False):
         super(DoubleCritic, self).__init__()
-        self._phi_1 = phi[0]
-        self._phi_2 = phi[1]
+        self._phi_1 = deepcopy(phi[0])
+        self._phi_2 = deepcopy(phi[1])
         self._value_1 = ValueHead(self._phi_1.output_dim, fan_init=fan_init)
         self._value_2 = ValueHead(self._phi_2.output_dim, fan_init=fan_init)
 
@@ -71,7 +75,7 @@ class DeterministicActor(nn.Module):
                  fan_init: bool = False,
                  activation_fn: Callable = torch.tanh):
         super(DeterministicActor, self).__init__()
-        self._phi = phi
+        self._phi = deepcopy(phi)
         self._head = DeterministicPolicyHead(
             self._phi.output_dim, output_dim, fan_init, activation_fn)
 
@@ -104,7 +108,7 @@ class GaussianActor(nn.Module):
 class CategoricalActor(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int):
         super(CategoricalActor, self).__init__()
-        self._phi = phi
+        self._phi = deepcopy(phi)
         self._head = CategoricalPolicyHead(self._phi.output_dim, output_dim)
 
     def forward(self,
@@ -117,7 +121,7 @@ class CategoricalActor(nn.Module):
 class CategoricalActorCritic(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int):
         super(CategoricalActorCritic, self).__init__()
-        self._phi = phi
+        self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
         self._policy = CategoricalPolicyHead(self._phi.output_dim, output_dim)
 
@@ -140,7 +144,7 @@ class GaussianActorCritic(nn.Module):
                  squash: bool = True,
                  fan_init: bool = True):
         super(GaussianActorCritic, self).__init__()
-        self._phi = phi
+        self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
         self._policy = GaussianPolicyHead(
             self._phi.output_dim, output_dim, std_limits,
