@@ -4,10 +4,10 @@ from typing import Callable, Optional, Tuple, Dict
 import torch
 import torch.nn as nn
 
-from .heads import CategoricalPolicyHead
-from .heads import DeterministicPolicyHead
-from .heads import GaussianPolicyHead
-from .heads import ValueHead
+from yadrl.networks.heads import CategoricalPolicyHead
+from yadrl.networks.heads import DeterministicPolicyHead
+from yadrl.networks.heads import GaussianPolicyHead
+from yadrl.networks.heads import ValueHead
 
 
 class DQNModel(nn.Module):
@@ -26,7 +26,7 @@ class DQNModel(nn.Module):
         adv = self._advantage(x)
         q_val = adv
         if self._dueling:
-            value = self._value(x)
+            value = self._value(x).expand_as(adv)
             q_val = value + adv - adv.mean(dim=1, keepdim=True).expand_as(adv)
         return q_val
 

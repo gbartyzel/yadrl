@@ -1,15 +1,15 @@
 dqn:
-  lrate: 0.001
+  lrate: 0.0005
   discount_factor: 0.99
-  polyak_factor: 0.01
+  polyak_factor: 0.001
   n_step: 1
   epsilon_annealing_steps: 1000
   epsilon_min: 0.01
-  use_soft_update: False
+  use_soft_update: True
   use_double_q: True
   use_dueling: True
-  memory_capacity: 1000
-  batch_size: 64
+  memory_capacity: 10000
+  batch_size: 31
   warm_up_steps: 1000
   update_frequency: 1
   logdir: "./output/dqn"

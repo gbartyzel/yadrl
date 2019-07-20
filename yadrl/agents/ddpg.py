@@ -1,23 +1,23 @@
-from typing import Union, Sequence, NoReturn, Optional
+from typing import NoReturn
+from typing import Optional
+from typing import Sequence
+from typing import Union
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 
+import yadrl.common.exploration_noise as noise
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.common.exploration_noise import (
-    GaussianNoise,
-    AdaptiveGaussianNoise,
-    OUNoise)
 from yadrl.common.replay_memory import Batch
-from yadrl.networks import Critic, DeterministicActor
+from yadrl.common.utils import mse_loss
+from yadrl.networks import Critic
+from yadrl.networks import DeterministicActor
 
 
 class DDPG(BaseOffPolicy):
     def __init__(self,
-                 pi_phi: nn.Module,
-                 qv_phi: nn.Module,
+                 pi_phi: torch.nn.Module,
+                 qv_phi: torch.nn.Module,
                  pi_lrate: float,
                  qv_lrate: float,
                  l2_reg_value: float,
@@ -37,12 +37,12 @@ class DDPG(BaseOffPolicy):
 
         self._pi = DeterministicActor(pi_phi, self._action_dim, True).to(
             self._device)
-        self._pi_optim = optim.Adam(self._pi.parameters(), lr=pi_lrate)
+        self._pi_optim = torch.optim.Adam(self._pi.parameters(), lr=pi_lrate)
         self._target_pi = DeterministicActor(
             pi_phi, self._action_dim, True).to(self._device)
 
         self._qv = Critic(qv_phi, True)
-        self._qv_optim = optim.Adam(
+        self._qv_optim = torch.optim.Adam(
             self._qv.parameters(), qv_lrate, weight_decay=l2_reg_value)
         self._target_qv = Critic(qv_phi, True).to(self._device)
 
@@ -84,7 +84,7 @@ class DDPG(BaseOffPolicy):
         target_q = self._td_target(batch.reward, mask, target_next_q)
         expected_q = self._qv(batch.state, batch.action)
 
-        loss = self._mse_loss(expected_q, target_q)
+        loss = mse_loss(expected_q, target_q)
         self._qv_optim.zero_grad()
         loss.backward()
         self._qv_optim.step()
@@ -114,17 +114,17 @@ class DDPG(BaseOffPolicy):
                    sigma_min: float,
                    theta: float,
                    n_step_annealing: float,
-                   dt: float) -> GaussianNoise:
+                   dt: float) -> noise.GaussianNoise:
 
         if noise_type == "normal":
-            return GaussianNoise(
+            return noise.GaussianNoise(
                 self._action_dim, mean=mean, sigma=sigma)
         elif noise_type == "adaptive":
-            return AdaptiveGaussianNoise(
+            return noise.AdaptiveGaussianNoise(
                 self._action_dim, mean=mean, sigma=sigma, sigma_min=sigma_min,
                 n_step_annealing=n_step_annealing)
         elif noise_type == "ou":
-            return OUNoise(
+            return noise.OUNoise(
                 self._action_dim, mean=mean, theta=theta, sigma=sigma,
                 sigma_min=sigma_min, n_step_annealing=n_step_annealing, dt=dt)
         else:

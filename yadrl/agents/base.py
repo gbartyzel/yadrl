@@ -86,7 +86,3 @@ class BaseOffPolicy(abc.ABC):
     def _hard_update(model: nn.Module, target_model: nn.Module):
         target_model.load_state_dict(model.state_dict())
 
-    @staticmethod
-    def _mse_loss(prediction: torch.Tensor,
-                  target: torch.Tensor) -> torch.Tensor:
-        return torch.mean(0.5 * (prediction - target).pow(2))

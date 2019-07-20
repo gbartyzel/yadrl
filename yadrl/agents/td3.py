@@ -1,20 +1,21 @@
-from typing import NoReturn, Sequence, Union
+from typing import NoReturn
+from typing import Sequence
+from typing import Union
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.replay_memory import Batch
+from yadrl.common.utils import mse_loss
 from yadrl.networks import DeterministicActor, DoubleCritic
 
 
 class TD3(BaseOffPolicy):
     def __init__(self,
-                 pi_phi: nn.Module,
-                 qvs_phi: nn.Module,
+                 pi_phi: torch.nn.Module,
+                 qvs_phi: torch.nn.Module,
                  action_limit: Union[np.ndarray, Sequence[float]],
                  target_noise_limit: Union[np.ndarray, Sequence[float]],
                  noise_std: float,
@@ -34,12 +35,14 @@ class TD3(BaseOffPolicy):
         self._pi = DeterministicActor(pi_phi, self._action_dim).to(self._device)
         self._target_pi = DeterministicActor(
             pi_phi, self._action_dim).to(self._device)
-        self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
+        self._pi_optim = torch.optim.Adam(self._pi.parameters(), pi_lrate)
 
         self._qvs = DoubleCritic((qvs_phi, qvs_phi)).to(self._device)
         self._target_qvs = DoubleCritic((qvs_phi, qvs_phi)).to(self._device)
-        self._qv_1_optim = optim.Adam(self._qvs.q1_parameters(), qvs_lrate)
-        self._qv_2_optim = optim.Adam(self._qvs.q2_parameters(), qvs_lrate)
+        self._qv_1_optim = torch.optim.Adam(self._qvs.q1_parameters(),
+                                            qvs_lrate)
+        self._qv_2_optim = torch.optim.Adam(self._qvs.q2_parameters(),
+                                            qvs_lrate)
 
         self.load()
         self._target_pi.load_state_dict(self._pi.state_dict())
@@ -86,8 +89,8 @@ class TD3(BaseOffPolicy):
         target_q = self._td_target(batch.reward, mask, target_next_q)
         expected_q1, expected_q2 = self._qvs(batch.state, batch.action)
 
-        q1_loss = self._mse_loss(expected_q1, target_q)
-        q2_loss = self._mse_loss(expected_q2, target_q)
+        q1_loss = mse_loss(expected_q1, target_q)
+        q2_loss = mse_loss(expected_q2, target_q)
 
         self._qv_1_optim.zero_grad()
         q1_loss.backward()

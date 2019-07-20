@@ -1,20 +1,20 @@
-from typing import NoReturn, Optional
+from typing import NoReturn
+from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.replay_memory import Batch
+from yadrl.common.utils import mse_loss
 from yadrl.networks import GaussianActor, DoubleCritic
 
 
 class SAC(BaseOffPolicy):
     def __init__(self,
-                 policy_phi: nn.Module,
-                 q_values_phi: nn.Module,
+                 policy_phi: torch.nn.Module,
+                 q_values_phi: torch.nn.Module,
                  policy_lrate: float,
                  q_values_lrate: float,
                  alpha_lrate: float,
@@ -25,23 +25,25 @@ class SAC(BaseOffPolicy):
         super(SAC, self).__init__(agent_type='sac', **kwargs)
         self._policy = GaussianActor(
             policy_phi, self._action_dim).to(self._device)
-        self._policy_optim = optim.Adam(self._policy.parameters(), policy_lrate)
+        self._policy_optim = torch.optim.Adam(self._policy.parameters(),
+                                              policy_lrate)
 
         self._q_values = DoubleCritic(
             (q_values_phi, q_values_phi), fan_init=True).to(self._device)
         self._target_q_values = DoubleCritic(
             (q_values_phi, q_values_phi), fan_init=True).to(self._device)
-        self._q_value_1_optim = optim.Adam(self._q_values.q1_parameters(),
-                                           q_values_lrate)
-        self._q_value_2_optim = optim.Adam(self._q_values.q2_parameters(),
-                                           q_values_lrate)
+        self._q_value_1_optim = torch.optim.Adam(self._q_values.q1_parameters(),
+                                                 q_values_lrate)
+        self._q_value_2_optim = torch.optim.Adam(self._q_values.q2_parameters(),
+                                                 q_values_lrate)
 
         self._alpha_tuning = alpha_tuning
         if alpha_tuning:
             self._target_entropy = -np.prod(self._action_dim)
             self._log_alpha = torch.zeros(
                 1, requires_grad=True, device=self._device)
-            self._alpha_optim = optim.Adam([self._log_alpha], lr=alpha_lrate)
+            self._alpha_optim = torch.optim.Adam([self._log_alpha],
+                                                 lr=alpha_lrate)
         self._alpha = 1.0 / reward_scaling
         self._reward_scaling = reward_scaling
 
@@ -76,8 +78,8 @@ class SAC(BaseOffPolicy):
         target_q = self._td_target(batch.reward, mask, target_next_v).detach()
         expected_q1, expected_q2 = self._q_values(batch.state, batch.action)
 
-        q1_loss = self._mse_loss(expected_q1, target_q)
-        q2_loss = self._mse_loss(expected_q2, target_q)
+        q1_loss = mse_loss(expected_q1, target_q)
+        q2_loss = mse_loss(expected_q2, target_q)
 
         action, log_prob, _ = self._policy(batch.state)
         target_log_prob = torch.min(*self._q_values(batch.state, action))

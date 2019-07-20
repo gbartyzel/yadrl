@@ -3,18 +3,17 @@ from typing import NoReturn
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.scheduler import LinearScheduler
+from yadrl.common.utils import huber_loss
 from yadrl.networks import DQNModel
 
 
 class DQN(BaseOffPolicy):
     def __init__(self,
-                 phi: nn.Module,
+                 phi: torch.nn.Module,
                  action_dim: int,
                  lrate: float,
                  epsilon_annealing_steps: float,
@@ -42,8 +41,7 @@ class DQN(BaseOffPolicy):
         self.load()
         self._target_qv.load_state_dict(self._qv.state_dict())
 
-        self._optim = optim.Adam(self._qv.parameters(), lr=lrate,
-                                 eps=0.01 / self._batch_size)
+        self._optim = torch.optim.Adam(self._qv.parameters(), lr=lrate)
 
         self._writer = SummaryWriter()
 
@@ -64,17 +62,18 @@ class DQN(BaseOffPolicy):
 
         target_next_q = self._target_qv(batch.next_state)
         if self._use_double_q:
-            next_action = self._qv(batch.next_state).argmax(dim=1, keepdim=True)
+            next_action = self._qv(batch.next_state).argmax(1).unsqueeze(1)
             target_next_q = target_next_q.gather(1, next_action)
         else:
-            target_next_q = target_next_q.max(dim=1, keepdim=True)[0]
+            target_next_q = target_next_q.max(1)[0].unsqueeze(1)
 
         target_q = self._td_target(batch.reward, mask, target_next_q).detach()
         expected_q = self._qv(batch.state).gather(1, batch.action.long())
-        loss = self._mse_loss(expected_q, target_q)
+        loss = huber_loss(expected_q, target_q)
 
         self._optim.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self._qv.parameters(), 10.0)
         self._optim.step()
 
         if self._use_soft_update:

@@ -1,4 +1,7 @@
-from typing import Callable, Sequence, Optional, Tuple, Dict
+from typing import Callable
+from typing import Optional
+from typing import Sequence
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -10,7 +13,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 class ValueHead(nn.Module):
     def __init__(self, input_dim: int,
                  output_dim: int = 1,
-                 fan_init: bool = True):
+                 fan_init: bool = False):
         super(ValueHead, self).__init__()
         self._value = nn.Linear(input_dim, output_dim)
 
