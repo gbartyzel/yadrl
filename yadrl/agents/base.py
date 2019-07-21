@@ -5,8 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from yadrl.common.replay_memory import ReplayMemory
 from yadrl.common.checkpoint_manager import CheckpointManager
+from yadrl.common.memory import ReplayMemory, Rollout
 
 
 class BaseOffPolicy(abc.ABC):
@@ -18,6 +18,7 @@ class BaseOffPolicy(abc.ABC):
                  polyak_factor: float,
                  n_step: int,
                  memory_capacity: int,
+                 combined_experience_replay: bool,
                  batch_size: int,
                  warm_up_steps: int,
                  update_frequency: int,
@@ -30,7 +31,7 @@ class BaseOffPolicy(abc.ABC):
 
         self._state_dim = state_dim
         self._action_dim = action_dim
-        self._discount = discount_factor
+        self._discount = discount_factor ** n_step
         self._polyak = polyak_factor
         self._n_step = n_step
 
@@ -41,7 +42,9 @@ class BaseOffPolicy(abc.ABC):
         self._checkpoint_manager = CheckpointManager(agent_type, logdir)
 
         self._memory = ReplayMemory(memory_capacity, state_dim, action_dim,
-                                    True)
+                                    combined_experience_replay, True)
+
+        self._rollout = Rollout(n_step, state_dim, action_dim, discount_factor)
 
     @abc.abstractmethod
     def act(self, *args):
@@ -65,11 +68,17 @@ class BaseOffPolicy(abc.ABC):
                 reward: Union[float, torch.Tensor],
                 next_state: Union[np.ndarray, torch.Tensor],
                 done: Any):
-        self._memory.push(state, action, reward, next_state, done)
+        transition = self._rollout.get_transition(state, action, reward,
+                                                  next_state, done)
+        if transition is None:
+            return
+        self._memory.push(*transition)
         if self._memory.size >= self._warm_up_steps:
             self.step += 1
             if self.step % self._update_frequency == 0:
                 self.update()
+        if done:
+            self._rollout.reset()
 
     def _soft_update(self, params: nn.parameter, target_params: nn.parameter):
         for param, t_param in zip(params, target_params):
@@ -80,9 +89,8 @@ class BaseOffPolicy(abc.ABC):
                    reward: torch.Tensor,
                    mask: torch.Tensor,
                    next_value: torch.Tensor) -> torch.Tensor:
-        return reward + mask * self._discount ** self._n_step * next_value
+        return reward + mask * self._discount * next_value
 
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):
         target_model.load_state_dict(model.state_dict())
-

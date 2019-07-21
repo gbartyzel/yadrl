@@ -6,7 +6,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.common.replay_memory import Batch
+from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
 from yadrl.networks import GaussianActor, DoubleCritic
 

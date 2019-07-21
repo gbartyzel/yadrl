@@ -8,7 +8,7 @@ import torch
 
 import yadrl.common.exploration_noise as noise
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.common.replay_memory import Batch
+from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
 from yadrl.networks import Critic
 from yadrl.networks import DeterministicActor
