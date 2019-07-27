@@ -5,14 +5,15 @@ dqn:
   n_step: 3
   epsilon_annealing_steps: 10000
   epsilon_min: 0.01
-  use_soft_update: True
-  use_double_q: True
-  use_dueling: True
   memory_capacity: 10000
-  combined_experience_replay: True
   batch_size: 32
   warm_up_steps: 1000
   update_frequency: 1
+  use_soft_update: True
+  use_double_q: True
+  use_dueling: True
+  use_noisy_layer: True
+  use_combined_experience_replay: True
   logdir: "./output/dqn"
 ddpg:
   actor_lrate: 0.0001

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 def fan_init(x: nn.Parameter):
-    size = x.data.size()[0]
+    size = x.data.size()[1]
     val = 1 / np.sqrt(size)
     return -val, val
 
@@ -40,22 +40,28 @@ class MLPNetwork(_BaseMLPNetwork):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  hidden_dim: Tuple[int, ...],
-                 activation_fn: nn.Module = nn.ReLU()):
-        super(MLPNetwork, self).__init__(input_dim, hidden_dim[-1])
+                 activation_fn: nn.Module = F.relu):
+        super(MLPNetwork, self).__init__(input_dim, hidden_dim[-1],
+                                         activation_fn)
 
         self._size = len(hidden_dim)
-        self._body = nn.Sequential()
+        self._body = nn.ModuleList()
         layers = (input_dim,) + hidden_dim
         for i in range(self._size):
-            self._body.add_module('Linear_{}'.format(i),
-                                  nn.Linear(layers[i], layers[i + 1]))
-            self._body.add_module('Activation_{}'.format(i), activation_fn)
-        self._body.apply(orthogonal_init)
+            self._body.append(nn.Linear(layers[i], layers[i + 1]))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for layer in self._body:
+            orthogonal_init(layer)
 
     def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
         if isinstance(x, tuple):
             x = torch.cat(x, dim=1)
-        return self._body(x)
+        for layer in self._body:
+            x = self._activation_fn(layer(x))
+        return x
 
 
 class DDPGMLPNetwork(_BaseMLPNetwork):
@@ -69,9 +75,9 @@ class DDPGMLPNetwork(_BaseMLPNetwork):
         self._size = len(hidden_dim)
         self._dense_1 = nn.Linear(input_dim[0], hidden_dim[0])
         self._dense_2 = nn.Linear(input_dim[1] + hidden_dim[0], hidden_dim[1])
-        self._initialize_variables()
+        self.reset_parameters()
 
-    def _initialize_variables(self):
+    def reset_parameters(self):
         self._dense_1.weight.data.uniform_(*fan_init(self._dense_1.weight))
         self._dense_1.bias.data.fill_(0)
         self._dense_2.weight.data.uniform_(*fan_init(self._dense_2.weight))

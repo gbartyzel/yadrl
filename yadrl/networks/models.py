@@ -1,5 +1,8 @@
 from copy import deepcopy
-from typing import Callable, Optional, Tuple, Dict
+from typing import Callable
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -7,18 +10,33 @@ import torch.nn as nn
 from yadrl.networks.heads import CategoricalPolicyHead
 from yadrl.networks.heads import DeterministicPolicyHead
 from yadrl.networks.heads import GaussianPolicyHead
+from yadrl.networks.heads import NoisyValueHead
 from yadrl.networks.heads import ValueHead
 
 
 class DQNModel(nn.Module):
-    def __init__(self, phi: nn.Module, output_dim: int, dueling=False):
+    def __init__(self,
+                 phi: nn.Module,
+                 output_dim: int,
+                 dueling: bool = False,
+                 noise: bool = False,
+                 sigma_init: float = 0.5,
+                 factorized: bool = True):
         super(DQNModel, self).__init__()
         self._dueling = dueling
-
+        self._noise = noise
         self._phi = deepcopy(phi)
-        self._advantage = ValueHead(self._phi.output_dim, output_dim)
-        if dueling:
-            self._value = ValueHead(self._phi.output_dim)
+
+        if noise:
+            self._advantage = NoisyValueHead(self._phi.output_dim,
+                                             output_dim, sigma_init, factorized)
+            if dueling:
+                self._value = NoisyValueHead(self._phi.output_dim, 1,
+                                             sigma_init, factorized)
+        else:
+            self._advantage = ValueHead(self._phi.output_dim, output_dim)
+            if dueling:
+                self._value = ValueHead(self._phi.output_dim)
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         x = self._phi(x)
@@ -29,6 +47,18 @@ class DQNModel(nn.Module):
             value = self._value(x).expand_as(adv)
             q_val = value + adv - adv.mean(dim=1, keepdim=True).expand_as(adv)
         return q_val
+
+    def sample_noise(self):
+        if self._noise:
+            self._advantage.sample_noise()
+            if self._dueling:
+                self._value.sample_noise()
+
+    def reset_noise(self):
+        if self._noise:
+            self._advantage.reset_noise()
+            if self._dueling:
+                self._value.reset_noise()
 
 
 class Critic(nn.Module):

@@ -9,6 +9,9 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 from torch.distributions.multivariate_normal import MultivariateNormal
 
+from yadrl.networks.noisy_linear import FactorizedNoisyLinear
+from yadrl.networks.noisy_linear import IndependentNoisyLinear
+
 
 class ValueHead(nn.Module):
     def __init__(self, input_dim: int,
@@ -27,6 +30,30 @@ class ValueHead(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         value = self._value(x)
         return value
+
+
+class NoisyValueHead(nn.Module):
+    def __init__(self, input_dim: int,
+                 output_dim: int = 1,
+                 sigma_init: float = 0.5,
+                 factorized: bool = True):
+        super(NoisyValueHead, self).__init__()
+        if factorized:
+            self._value = FactorizedNoisyLinear(input_dim, output_dim,
+                                                sigma_init)
+        else:
+            self._value = IndependentNoisyLinear(input_dim, output_dim,
+                                                 sigma_init)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        value = self._value(x)
+        return value
+
+    def sample_noise(self):
+        self._value.sample_noise()
+
+    def reset_noise(self):
+        self._value.reset_noise()
 
 
 class DeterministicPolicyHead(nn.Module):

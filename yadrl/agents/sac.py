@@ -3,7 +3,6 @@ from typing import Optional
 
 import numpy as np
 import torch
-from torch.utils.tensorboard import SummaryWriter
 
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
@@ -49,8 +48,6 @@ class SAC(BaseOffPolicy):
 
         self.load()
         self._target_q_values.load_state_dict(self._q_values.state_dict())
-
-        self.writer = SummaryWriter()
 
     def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
@@ -113,12 +110,6 @@ class SAC(BaseOffPolicy):
             self._alpha_optim.step()
 
             self._alpha = torch.exp(self._log_alpha)
-
-        self.writer.add_scalar('loss/q1', q1_loss.item(), self.step)
-        self.writer.add_scalar('loss/q2', q2_loss.item(), self.step)
-        self.writer.add_scalar('loss/pi', policy_loss.item(), self.step)
-        self.writer.add_scalar('loss/a', alpha_loss.item(), self.step)
-        self.writer.add_scalar('alpha', self._alpha.item(), self.step)
 
     def load(self) -> NoReturn:
         model = self._checkpoint_manager.load()

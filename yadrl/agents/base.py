@@ -18,7 +18,7 @@ class BaseOffPolicy(abc.ABC):
                  polyak_factor: float,
                  n_step: int,
                  memory_capacity: int,
-                 combined_experience_replay: bool,
+                 use_combined_experience_replay: bool,
                  batch_size: int,
                  warm_up_steps: int,
                  update_frequency: int,
@@ -42,7 +42,7 @@ class BaseOffPolicy(abc.ABC):
         self._checkpoint_manager = CheckpointManager(agent_type, logdir)
 
         self._memory = ReplayMemory(memory_capacity, state_dim, action_dim,
-                                    combined_experience_replay, True)
+                                    use_combined_experience_replay, True)
 
         self._rollout = Rollout(n_step, state_dim, action_dim, discount_factor)
 
