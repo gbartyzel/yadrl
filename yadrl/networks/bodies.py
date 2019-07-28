@@ -64,6 +64,35 @@ class MLPNetwork(_BaseMLPNetwork):
         return x
 
 
+class BNMLPNetwork(_BaseMLPNetwork):
+    def __init__(self,
+                 input_dim: Union[int, Tuple[int, ...]],
+                 hidden_dim: Tuple[int, ...],
+                 activation_fn: nn.Module = F.relu):
+        super(BNMLPNetwork, self).__init__(input_dim, hidden_dim[-1],
+                                           activation_fn)
+
+        self._size = len(hidden_dim)
+        self._body = nn.ModuleList()
+        layers = (input_dim,) + hidden_dim
+        for i in range(self._size):
+            self._body.append(nn.Linear(layers[i], layers[i + 1]))
+            self._body.append(nn.BatchNorm1d(layers[i + 1]))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for layer in self._body:
+            orthogonal_init(layer)
+
+    def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
+        if isinstance(x, tuple):
+            x = torch.cat(x, dim=1)
+        for i in range(len(self._body) - 1):
+            x = self._activation_fn(self._body[i + 1](self._body[i](x)))
+        return x
+
+
 class DDPGMLPNetwork(_BaseMLPNetwork):
     def __init__(self,
                  input_dim: Tuple[int, int],
