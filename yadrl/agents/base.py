@@ -1,10 +1,13 @@
 import abc
-from typing import Any, Union
+from typing import Any
+from typing import Optional
+from typing import Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 
+import yadrl.common.normalizer as normalizer
 from yadrl.common.checkpoint_manager import CheckpointManager
 from yadrl.common.memory import ReplayMemory, Rollout
 
@@ -18,16 +21,20 @@ class BaseOffPolicy(abc.ABC):
                  polyak_factor: float,
                  n_step: int,
                  memory_capacity: int,
-                 use_combined_experience_replay: bool,
                  batch_size: int,
                  warm_up_steps: int,
                  update_frequency: int,
-                 logdir: str):
+                 logdir: str,
+                 use_combined_experience_replay: bool,
+                 use_reward_normalization: bool,
+                 state_normalizer: Optional[normalizer.DummyNormalizer] = None):
         super(BaseOffPolicy, self).__init__()
         self.step = 0
 
         self._device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
+
+        self._use_reward_normalization = use_reward_normalization
 
         self._state_dim = state_dim
         self._action_dim = action_dim
@@ -45,6 +52,16 @@ class BaseOffPolicy(abc.ABC):
                                     use_combined_experience_replay, True)
 
         self._rollout = Rollout(n_step, state_dim, action_dim, discount_factor)
+
+        if use_reward_normalization:
+            self._reward_normalizer = normalizer.RMSNormalizer(1)
+        else:
+            self._reward_normalizer = normalizer.DummyNormalizer()
+
+        if state_normalizer is None:
+            self._state_normalizer = normalizer.DummyNormalizer()
+        else:
+            self._state_normalizer = state_normalizer
 
     @abc.abstractmethod
     def act(self, *args):
@@ -68,6 +85,8 @@ class BaseOffPolicy(abc.ABC):
                 reward: Union[float, torch.Tensor],
                 next_state: Union[np.ndarray, torch.Tensor],
                 done: Any):
+        self._state_normalizer.update(state)
+        self._reward_normalizer.update(reward)
         transition = self._rollout.get_transition(state, action, reward,
                                                   next_state, done)
         if transition is None:
@@ -89,6 +108,7 @@ class BaseOffPolicy(abc.ABC):
                    reward: torch.Tensor,
                    mask: torch.Tensor,
                    next_value: torch.Tensor) -> torch.Tensor:
+        reward = self._reward_normalizer(reward, self._device)
         return reward + mask * self._discount * next_value
 
     @staticmethod

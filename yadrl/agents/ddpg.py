@@ -55,6 +55,7 @@ class DDPG(BaseOffPolicy):
 
     def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().to(self._device)
+        state = self._state_normalizer(state)
         self._pi.eval()
         with torch.no_grad():
             action = self._pi(state)
