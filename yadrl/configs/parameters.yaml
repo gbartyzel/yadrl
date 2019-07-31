@@ -2,11 +2,12 @@ dqn:
   lrate: 0.0005
   discount_factor: 0.99
   polyak_factor: 0.001
-  n_step: 3
+  n_step: 5
   epsilon_annealing_steps: 10000
   epsilon_min: 0.01
   memory_capacity: 10000
   batch_size: 32
+  grad_norm_value: 10.0
   warm_up_steps: 1000
   update_frequency: 1
   use_soft_update: True
@@ -14,6 +15,7 @@ dqn:
   use_dueling: True
   use_noisy_layer: True
   use_combined_experience_replay: True
+  use_reward_normalization: True
   logdir: "./output/dqn"
 ddpg:
   actor_lrate: 0.0001
@@ -31,10 +33,12 @@ ddpg:
   theta: 0.15
   dt: 0.01
   memory_capacity: 1000000
-  combined_experience_replay: False
   batch_size: 64
   warm_up_steps: 10000
   update_frequency: 1
+  use_combined_experience_replay: True
+  use_reward_normalization: True
+  state_normalizer: "rms"
   logdir: "./output/ddpg"
 td3:
   actor_lrate: 0.001
@@ -48,10 +52,12 @@ td3:
   target_noise_std: 0.2
   policy_update_frequency: 2
   memory_capacity: 1000000
-  combined_experience_replay: False
   batch_size: 100
   warm_up_steps: 10000
   update_frequency: 1
+  use_combined_experience_replay: True
+  use_reward_normalization: True
+  state_normalizer: "rms"
   logdir: "./output/td3"
 sac:
   policy_lrate: 0.0003
@@ -61,8 +67,10 @@ sac:
   polyak_factor: 0.005
   n_step: 1
   memory_capacity: 1000000
-  combined_experience_replay: False
   batch_size: 256
   warm_up_steps: 10000
   update_frequency: 1
+  use_combined_experience_replay: True
+  use_reward_normalization: True
+  state_normalizer: "rms"
   logdir: "./output/sac"
