@@ -9,7 +9,7 @@ import torch
 
 _DATA = Union[np.ndarray, torch.Tensor]
 
-Batch = namedtuple('Batch', 'state action reward next_state done')
+Batch = namedtuple('Batch', 'state action reward next_state mask')
 
 
 class RingBuffer:
@@ -86,7 +86,7 @@ class ReplayMemory(object):
         self._action_buffer = RingBuffer(capacity, action_dim)
         self._reward_buffer = RingBuffer(capacity, 1)
         self._next_state_buffer = RingBuffer(capacity, state_dim)
-        self._terminal_buffer = RingBuffer(capacity, 1)
+        self._mask_buffer = RingBuffer(capacity, 1)
 
     def push(self,
              state: _DATA,
@@ -98,7 +98,7 @@ class ReplayMemory(object):
         self._action_buffer.add(action)
         self._reward_buffer.add(reward)
         self._next_state_buffer.add(next_state)
-        self._terminal_buffer.add(terminal)
+        self._mask_buffer.add(1.0 - terminal)
 
     def sample(self,
                batch_size: int,
@@ -112,7 +112,7 @@ class ReplayMemory(object):
                       action=self._action_buffer.sample(idxs, device),
                       reward=self._reward_buffer.sample(idxs, device),
                       next_state=self._next_state_buffer.sample(idxs, device),
-                      done=self._terminal_buffer.sample(idxs, device))
+                      mask=self._mask_buffer.sample(idxs, device))
 
         return batch
 
@@ -125,7 +125,7 @@ class ReplayMemory(object):
         action = self._action_buffer[item]
         reward = self._reward_buffer[item]
         next_state = self._next_state_buffer[item]
-        terminal = self._terminal_buffer[item]
+        terminal = self._mask_buffer[item]
         return state, action, reward, next_state, terminal
 
 

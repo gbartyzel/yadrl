@@ -3,6 +3,9 @@ from typing import NoReturn
 
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.optim as optim
+
 from torch.utils.tensorboard import SummaryWriter
 
 from yadrl.agents.base import BaseOffPolicy
@@ -13,7 +16,7 @@ from yadrl.networks import DQNModel
 
 class DQN(BaseOffPolicy):
     def __init__(self,
-                 phi: torch.nn.Module,
+                 phi: nn.Module,
                  action_dim: int,
                  lrate: float,
                  grad_norm_value: float,
@@ -46,7 +49,7 @@ class DQN(BaseOffPolicy):
         self.load()
         self._target_qv.load_state_dict(self._qv.state_dict())
 
-        self._optim = torch.optim.Adam(self._qv.parameters(), lr=lrate)
+        self._optim = optim.Adam(self._qv.parameters(), lr=lrate)
 
         self.writer = SummaryWriter()
 
@@ -69,7 +72,6 @@ class DQN(BaseOffPolicy):
 
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
-        mask = 1.0 - batch.done
 
         state = self._state_normalizer(batch.state, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
@@ -83,15 +85,17 @@ class DQN(BaseOffPolicy):
         else:
             target_next_q = target_next_q.max(1)[0].unsqueeze(1)
 
-        target_q = self._td_target(batch.reward, mask, target_next_q).detach()
+        target_q = self._td_target(batch.reward, batch.mask,
+                                   target_next_q).detach()
         self._qv.sample_noise()
         expected_q = self._qv(state).gather(1, batch.action.long())
         loss = huber_loss(expected_q, target_q)
 
         self._optim.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self._qv.parameters(),
-                                       self._grad_norm_value)
+        if self._grad_norm_value > 0.0:
+            nn.utils.clip_grad_norm_(self._qv.parameters(),
+                                     self._grad_norm_value)
         self._optim.step()
 
         if self._use_soft_update:
@@ -105,6 +109,7 @@ class DQN(BaseOffPolicy):
         model = self._checkpoint_manager.load()
         if model:
             self._reward_normalizer.load(model['reward_norm'])
+            self._state_normalizer.load(model['state_norm'])
             self._qv.load_state_dict(model['model'])
 
     def save(self):
@@ -112,7 +117,9 @@ class DQN(BaseOffPolicy):
         state_dict['model'] = self._qv.state_dict()
         if self._use_reward_normalization:
             state_dict['reward_norm'] = self._reward_normalizer.state_dict()
-        self._checkpoint_manager.save(self._qv.state_dict(), self.step)
+        if self._use_state_normalization:
+            state_dict['state_norm'] = self._state_normalizer.state_dict()
+        self._checkpoint_manager.save(state_dict, self.step)
 
     def log(self):
         for name, param in self._qv.named_parameters():

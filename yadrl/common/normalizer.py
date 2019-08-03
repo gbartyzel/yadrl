@@ -1,5 +1,6 @@
 import copy
 from typing import Dict
+from typing import Tuple
 from typing import Union
 
 import numpy as np
@@ -30,7 +31,7 @@ class DummyNormalizer:
 
 class RMSNormalizer(DummyNormalizer):
     def __init__(self,
-                 dim: int,
+                 dim: Tuple[int, ...],
                  clip_min: float = -5.0,
                  clip_max: float = 5.0):
         super(RMSNormalizer, self).__init__()

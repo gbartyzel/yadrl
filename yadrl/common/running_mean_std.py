@@ -6,7 +6,7 @@ import numpy as np
 
 class RunningMeanStd:
     def __init__(self,
-                 dim: int,
+                 dim: Tuple[int, ...],
                  eps: Optional[float] = 1e-8):
         self._count = eps
         self._mean = np.ones(dim) * eps

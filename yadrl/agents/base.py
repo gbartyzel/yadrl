@@ -1,7 +1,7 @@
 import abc
 from typing import Any
-from typing import Optional
 from typing import Union
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -25,9 +25,11 @@ class BaseOffPolicy(abc.ABC):
                  warm_up_steps: int,
                  update_frequency: int,
                  logdir: str,
-                 use_combined_experience_replay: bool,
-                 use_reward_normalization: bool,
-                 state_normalizer: Optional[normalizer.DummyNormalizer] = None):
+                 use_combined_experience_replay: bool = False,
+                 use_reward_normalization: bool = False,
+                 use_state_normalization: bool = False,
+                 reward_norm_clip: Tuple[float, float] = (-1.0, 1.0),
+                 state_norm_clip: Tuple[float, float] = (-5.0, 5.0)):
         super(BaseOffPolicy, self).__init__()
         self.step = 0
 
@@ -35,6 +37,7 @@ class BaseOffPolicy(abc.ABC):
             'cuda' if torch.cuda.is_available() else 'cpu')
 
         self._use_reward_normalization = use_reward_normalization
+        self._use_state_normalization = use_state_normalization
 
         self._state_dim = state_dim
         self._action_dim = action_dim
@@ -54,14 +57,16 @@ class BaseOffPolicy(abc.ABC):
         self._rollout = Rollout(n_step, state_dim, action_dim, discount_factor)
 
         if use_reward_normalization:
-            self._reward_normalizer = normalizer.RMSNormalizer(1)
+            self._reward_normalizer = normalizer.RMSNormalizer(
+                (1,), *reward_norm_clip)
         else:
             self._reward_normalizer = normalizer.DummyNormalizer()
 
-        if state_normalizer is None:
-            self._state_normalizer = normalizer.DummyNormalizer()
+        if use_state_normalization:
+            self._state_normalizer = normalizer.RMSNormalizer(
+                (state_dim,), *state_norm_clip)
         else:
-            self._state_normalizer = state_normalizer
+            self._state_normalizer = normalizer.DummyNormalizer()
 
     @abc.abstractmethod
     def act(self, *args):
