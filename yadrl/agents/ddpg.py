@@ -12,8 +12,8 @@ import yadrl.common.exploration_noise as noise
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks import Critic
-from yadrl.networks import DeterministicActor
+from yadrl.networks.models import Critic
+from yadrl.networks.models import DeterministicActor
 
 
 class DDPG(BaseOffPolicy):
@@ -47,10 +47,10 @@ class DDPG(BaseOffPolicy):
         self._target_pi = DeterministicActor(
             pi_phi, self._action_dim, True).to(self._device)
 
-        self._qv = Critic(qv_phi, True)
+        self._qv = Critic(qv_phi)
         self._qv_optim = optim.Adam(
             self._qv.parameters(), qv_lrate, weight_decay=l2_reg_value)
-        self._target_qv = Critic(qv_phi, True).to(self._device)
+        self._target_qv = Critic(qv_phi).to(self._device)
 
         self.load()
         self._target_pi.load_state_dict(self._pi.state_dict())
@@ -60,7 +60,7 @@ class DDPG(BaseOffPolicy):
                                       theta, n_step_annealing, dt)
 
     def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
-        state = torch.from_numpy(state).float().to(self._device)
+        state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
         state = self._state_normalizer(state)
         self._pi.eval()
         with torch.no_grad():

@@ -6,11 +6,11 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from yadrl.networks.heads import CategoricalPolicyHead
 from yadrl.networks.heads import DeterministicPolicyHead
 from yadrl.networks.heads import GaussianPolicyHead
-from yadrl.networks.heads import NoisyValueHead
 from yadrl.networks.heads import ValueHead
 
 
@@ -19,26 +19,28 @@ class DQNModel(nn.Module):
                  phi: nn.Module,
                  output_dim: int,
                  dueling: bool = False,
-                 noise: bool = False,
-                 sigma_init: float = 0.5,
-                 factorized: bool = True):
+                 noise_type: str = 'none',
+                 sigma_init: float = 0.5):
         super(DQNModel, self).__init__()
         self._dueling = dueling
-        self._noise = noise
         self._phi = deepcopy(phi)
 
-        if noise:
-            self._advantage = NoisyValueHead(self._phi.output_dim,
-                                             output_dim, sigma_init, factorized)
-            if dueling:
-                self._value = NoisyValueHead(self._phi.output_dim, 1,
-                                             sigma_init, factorized)
-        else:
-            self._advantage = ValueHead(self._phi.output_dim, output_dim)
-            if dueling:
-                self._value = ValueHead(self._phi.output_dim)
+        self._advantage = ValueHead(input_dim=self._phi.output_dim,
+                                    output_dim=output_dim,
+                                    noise_type=noise_type,
+                                    sigma_init=sigma_init)
+        if dueling:
+            self._value = ValueHead(input_dim=self._phi.output_dim,
+                                    output_dim=1,
+                                    noise_type=noise_type,
+                                    sigma_init=sigma_init)
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(self,
+                x: torch.Tensor,
+                sample_noise: bool = False) -> Dict[str, torch.Tensor]:
+        self.reset_noise()
+        if sample_noise:
+            self.sample_noise()
         x = self._phi(x)
 
         adv = self._advantage(x)
@@ -49,35 +51,72 @@ class DQNModel(nn.Module):
         return q_val
 
     def sample_noise(self):
-        if self._noise:
-            self._advantage.sample_noise()
-            if self._dueling:
-                self._value.sample_noise()
+        self._advantage.sample_noise()
+        if self._dueling:
+            self._value.sample_noise()
 
     def reset_noise(self):
-        if self._noise:
-            self._advantage.reset_noise()
-            if self._dueling:
-                self._value.reset_noise()
+        self._advantage.reset_noise()
+        if self._dueling:
+            self._value.reset_noise()
+
+
+class DistributionalDQNModel(DQNModel):
+    def __init__(self,
+                 phi: nn.Module,
+                 output_dim: int,
+                 atoms_dim: int,
+                 distribution_type: str = 'categorical',
+                 dueling: bool = False,
+                 noise_type: str = 'none',
+                 sigma_init: float = 0.5):
+        super(DistributionalDQNModel, self).__init__(
+            phi, output_dim * atoms_dim, dueling, noise_type, sigma_init)
+        self._distribution_type = distribution_type
+        self._output_dim = output_dim
+        self._atoms_dim = atoms_dim
+
+        if dueling:
+            self._value = ValueHead(input_dim=self._phi.output_dim,
+                                    output_dim=atoms_dim,
+                                    noise_type=noise_type,
+                                    sigma_init=sigma_init)
+
+    def forward(self,
+                x: torch.Tensor,
+                sample_noise: bool = False) -> Dict[str, torch.Tensor]:
+        self.reset_noise()
+        if sample_noise:
+            self.sample_noise()
+        x = self._phi(x)
+
+        adv = self._advantage(x).view(-1, self._output_dim, self._atoms_dim)
+        probs = adv
+        if self._dueling:
+            value = self._value(x).view(-1, 1, self._atoms_dim).expand_as(adv)
+            probs = value + adv - adv.mean(dim=-1, keepdim=True).expand_as(adv)
+        if self._distribution_type == 'categorical':
+            return F.softmax(probs, dim=-1)
+        return probs
 
 
 class Critic(nn.Module):
-    def __init__(self, phi, fan_init=False):
+    def __init__(self, phi):
         super(Critic, self).__init__()
         self._phi = deepcopy(phi)
-        self._value = ValueHead(self._phi.output_dim, fan_init)
+        self._value = ValueHead(self._phi.output_dim)
 
     def forward(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
         return self._value(self._phi(x))
 
 
 class DoubleCritic(nn.Module):
-    def __init__(self, phi: Tuple[nn.Module, nn.Module], fan_init=False):
+    def __init__(self, phi: Tuple[nn.Module, nn.Module]):
         super(DoubleCritic, self).__init__()
         self._phi_1 = deepcopy(phi[0])
         self._phi_2 = deepcopy(phi[1])
-        self._value_1 = ValueHead(self._phi_1.output_dim, fan_init=fan_init)
-        self._value_2 = ValueHead(self._phi_2.output_dim, fan_init=fan_init)
+        self._value_1 = ValueHead(self._phi_1.output_dim)
+        self._value_2 = ValueHead(self._phi_2.output_dim)
 
     def q1_parameters(self):
         return tuple(self._phi_1.parameters()) \

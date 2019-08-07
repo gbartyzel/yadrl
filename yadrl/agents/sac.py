@@ -9,7 +9,7 @@ import torch.optim as optim
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks import GaussianActor, DoubleCritic
+from yadrl.networks.models import GaussianActor, DoubleCritic
 
 
 class SAC(BaseOffPolicy):
@@ -33,10 +33,8 @@ class SAC(BaseOffPolicy):
             pi_phi, self._action_dim).to(self._device)
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
-        self._qvs = DoubleCritic(
-            (qvs_phi, qvs_phi), fan_init=True).to(self._device)
-        self._target_qvs = DoubleCritic(
-            (qvs_phi, qvs_phi), fan_init=True).to(self._device)
+        self._qvs = DoubleCritic((qvs_phi, qvs_phi)).to(self._device)
+        self._target_qvs = DoubleCritic((qvs_phi, qvs_phi)).to(self._device)
         self._qv_1_optim = optim.Adam(self._qvs.q1_parameters(), qvs_lrate)
         self._qv_2_optim = optim.Adam(self._qvs.q2_parameters(), qvs_lrate)
 

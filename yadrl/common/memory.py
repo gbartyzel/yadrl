@@ -169,6 +169,7 @@ class Rollout:
         self._state_buffer.reset()
         self._action_buffer.reset()
         self._reward_buffer.reset()
+        self._size = 0
 
     def _compute_cumulative_reward(self):
         cum_reward = 0

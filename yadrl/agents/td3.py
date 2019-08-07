@@ -11,7 +11,7 @@ from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks import DeterministicActor, DoubleCritic
+from yadrl.networks.models import DeterministicActor, DoubleCritic
 
 
 class TD3(BaseOffPolicy):

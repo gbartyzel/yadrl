@@ -13,14 +13,31 @@ from yadrl.networks.noisy_linear import FactorizedNoisyLinear
 from yadrl.networks.noisy_linear import IndependentNoisyLinear
 
 
-class ValueHead(nn.Module):
-    def __init__(self, input_dim: int,
-                 output_dim: int = 1,
-                 fan_init: bool = False):
-        super(ValueHead, self).__init__()
-        self._value = nn.Linear(input_dim, output_dim)
+def _get_layer(layer_type, input_dim, output_dim, sigma_init):
+    if layer_type == 'none':
+        return nn.Linear(input_dim, output_dim)
+    elif layer_type == 'factorized':
+        return FactorizedNoisyLinear(input_dim, output_dim, sigma_init)
+    elif layer_type == 'independent':
+        return IndependentNoisyLinear(input_dim, output_dim, sigma_init)
+    raise ValueError(
+        'Wrong layer type, choose between: none, factorized, independent')
 
-        if fan_init:
+
+class ValueHead(nn.Module):
+    def __init__(self,
+                 input_dim: int,
+                 output_dim: int = 1,
+                 noise_type: str = 'none',
+                 sigma_init: float = 0.5):
+        super(ValueHead, self).__init__()
+        self._enable_noise = noise_type != 'none'
+        self._value = _get_layer(layer_type=noise_type,
+                                 input_dim=input_dim,
+                                 output_dim=output_dim,
+                                 sigma_init=sigma_init)
+
+        if not self._enable_noise:
             self._initialize_variables()
 
     def _initialize_variables(self):
@@ -31,29 +48,13 @@ class ValueHead(nn.Module):
         value = self._value(x)
         return value
 
-
-class NoisyValueHead(nn.Module):
-    def __init__(self, input_dim: int,
-                 output_dim: int = 1,
-                 sigma_init: float = 0.5,
-                 factorized: bool = True):
-        super(NoisyValueHead, self).__init__()
-        if factorized:
-            self._value = FactorizedNoisyLinear(input_dim, output_dim,
-                                                sigma_init)
-        else:
-            self._value = IndependentNoisyLinear(input_dim, output_dim,
-                                                 sigma_init)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        value = self._value(x)
-        return value
-
     def sample_noise(self):
-        self._value.sample_noise()
+        if self._enable_noise:
+            self._value.sample_noise()
 
     def reset_noise(self):
-        self._value.reset_noise()
+        if self._enable_noise:
+            self._value.reset_noise()
 
 
 class DeterministicPolicyHead(nn.Module):

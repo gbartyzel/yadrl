@@ -1,7 +1,7 @@
 import abc
 from typing import Any
-from typing import Union
 from typing import Tuple
+from typing import Union
 
 import numpy as np
 import torch
@@ -25,6 +25,7 @@ class BaseOffPolicy(abc.ABC):
                  warm_up_steps: int,
                  update_frequency: int,
                  logdir: str,
+                 seed: int = 1337,
                  use_combined_experience_replay: bool = False,
                  use_reward_normalization: bool = False,
                  use_state_normalization: bool = False,
@@ -32,6 +33,7 @@ class BaseOffPolicy(abc.ABC):
                  state_norm_clip: Tuple[float, float] = (-5.0, 5.0)):
         super(BaseOffPolicy, self).__init__()
         self.step = 0
+        self._set_seeds(seed)
 
         self._device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
@@ -97,7 +99,7 @@ class BaseOffPolicy(abc.ABC):
         if transition is None:
             return
         self._memory.push(*transition)
-        if self._memory.size >= self._warm_up_steps:
+        if self._memory.size > self._warm_up_steps:
             self.step += 1
             if self.step % self._update_frequency == 0:
                 self.update()
@@ -119,3 +121,8 @@ class BaseOffPolicy(abc.ABC):
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):
         target_model.load_state_dict(model.state_dict())
+
+    @staticmethod
+    def _set_seeds(seed):
+        torch.random.manual_seed(seed)
+        np.random.seed(seed)
