@@ -10,8 +10,8 @@ import torch.optim as optim
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.scheduler import LinearScheduler
 from yadrl.common.utils import huber_loss
+from yadrl.networks.models import CategoricalDQNModel
 from yadrl.networks.models import DQNModel
-from yadrl.networks.models import DistributionalDQNModel
 
 
 class DQN(BaseOffPolicy):
@@ -29,11 +29,11 @@ class DQN(BaseOffPolicy):
                  use_soft_update: bool = False,
                  use_double_q: bool = False,
                  use_dueling: bool = False,
-                 use_categorical: bool = True, **kwargs):
+                 use_categorical: bool = False, **kwargs):
         super(DQN, self).__init__(agent_type='dqn', action_dim=1, **kwargs)
+
         self._action_dim = action_dim
         self._atoms_dim = atoms_dim
-        self._v_limit = (v_min, v_max)
 
         self._grad_norm_value = grad_norm_value
 
@@ -49,16 +49,18 @@ class DQN(BaseOffPolicy):
             1.0, epsilon_min, epsilon_annealing_steps)
 
         if use_categorical:
-            self._qv = DistributionalDQNModel(
+            self._qv = CategoricalDQNModel(
                 phi=phi,
                 output_dim=self._action_dim,
                 atoms_dim=atoms_dim,
                 dueling=use_dueling,
                 noise_type=noise_type).to(self._device)
 
+            self._v_limit = (v_min, v_max)
             self._z_delta = (v_max - v_min) / (self._atoms_dim - 1)
-            atoms = [v_min + i * self._z_delta for i in range(atoms_dim)]
-            self._atoms = torch.FloatTensor(atoms).unsqueeze(0).to(self._device)
+            self._atoms = torch.from_numpy(
+                v_min + np.arange(atoms_dim) * self._z_delta
+            ).float().unsqueeze(0).to(self._device)
         else:
             self._qv = DQNModel(
                 phi=phi,
@@ -79,7 +81,8 @@ class DQN(BaseOffPolicy):
         self._qv.eval()
         with torch.no_grad():
             if self._use_catgorical:
-                action = self._get_distributional_action(state, train)
+                probs = self._qv(state, train)
+                action = probs.mul(self._atoms).sum(-1).argmax(-1)
             else:
                 action = self._qv(state, train).argmax(dim=1)
         self._qv.train()
@@ -88,11 +91,6 @@ class DQN(BaseOffPolicy):
         if eps_flag or self._use_noise or not train:
             return action[0].cpu().numpy()
         return random.randint(0, self._action_dim - 1)
-
-    def _get_distributional_action(self, state, sample_noise):
-        probs = self._qv(state, sample_noise)
-        action_values = probs.mul(self._atoms.expand_as(probs)).sum(dim=-1)
-        return action_values.argmax(dim=1)
 
     def update(self):
         batch = self._memory.sample(self._batch_size, self._device)
@@ -142,34 +140,31 @@ class DQN(BaseOffPolicy):
 
         next_probs = self._target_qv(next_state, True)
         if self._use_double_q:
-            next_action = self._get_distributional_action(
-                next_state, True).view(-1, 1).unsqueeze(1)
+            probs = self._qv(next_state, True)
+            next_action = probs.mul(self._atoms).sum(-1).argmax(-1).view(-1, 1)
         else:
-            action_values = next_probs.mul(
-                self._atoms.expand_as(next_probs)).sum(dim=-1)
-            next_action = action_values.argmax(dim=1, keepdim=True).unsqueeze(1)
+            next_action = next_probs.mul(self._atoms).sum(-1).argmax(1, True)
+        next_action = next_action.unsqueeze(-1).repeat(1, 1, self._atoms_dim)
 
-        next_action = next_action.repeat(1, 1, self._atoms_dim)
         next_probs = next_probs.gather(1, next_action).squeeze()
         target_probs = torch.zeros(next_probs.shape).to(self._device)
 
         new_atoms = reward + self._discount * batch.mask * self._atoms
         new_atoms = torch.clamp(new_atoms, *self._v_limit)
 
-        b = (new_atoms - self._v_limit[0]) / self._z_delta
-        l = b.floor()
-        u = b.ceil()
+        bj = (new_atoms - self._v_limit[0]) / self._z_delta
+        l = bj.floor()
+        u = bj.ceil()
 
-        delta_l_prob = next_probs * (u + (u == l).float() - b)
-        delta_u_prob = next_probs * (b - l)
+        delta_l_prob = next_probs * (u + (u == l).float() - bj)
+        delta_u_prob = next_probs * (bj - l)
 
         for i in range(self._batch_size):
             target_probs[i].index_add_(0, l[i].long(), delta_l_prob[i])
             target_probs[i].index_add_(0, u[i].long(), delta_u_prob[i])
 
-        action = batch.action.unsqueeze(1).repeat(1, 1, self._atoms_dim).long()
-        log_probs = self._qv(state, True).log()
-        log_probs = log_probs.gather(1, action).squeeze()
+        action = batch.action.unsqueeze(-1).repeat(1, 1, self._atoms_dim).long()
+        log_probs = self._qv(state, True).log().gather(1, action).squeeze()
         loss = -torch.sum(target_probs * log_probs, 1).mean()
 
         return loss

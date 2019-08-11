@@ -1,6 +1,6 @@
 import os
-
 from typing import Dict, Any, Optional
+
 import yaml
 
 
@@ -13,6 +13,12 @@ class Parameters(object):
     def dqn(self) -> Dict[str, Any]:
         if 'dqn' in self.__parameters:
             return self.__parameters['dqn']
+        raise ValueError
+
+    @property
+    def qrdqn(self) -> Dict[str, Any]:
+        if 'dqn' in self.__parameters:
+            return self.__parameters['qrdqn']
         raise ValueError
 
     @property

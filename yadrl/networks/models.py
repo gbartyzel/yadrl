@@ -61,18 +61,17 @@ class DQNModel(nn.Module):
             self._value.reset_noise()
 
 
-class DistributionalDQNModel(DQNModel):
+class CategoricalDQNModel(DQNModel):
     def __init__(self,
                  phi: nn.Module,
                  output_dim: int,
                  atoms_dim: int,
-                 distribution_type: str = 'categorical',
                  dueling: bool = False,
                  noise_type: str = 'none',
                  sigma_init: float = 0.5):
-        super(DistributionalDQNModel, self).__init__(
+        super(CategoricalDQNModel, self).__init__(
             phi, output_dim * atoms_dim, dueling, noise_type, sigma_init)
-        self._distribution_type = distribution_type
+
         self._output_dim = output_dim
         self._atoms_dim = atoms_dim
 
@@ -95,9 +94,32 @@ class DistributionalDQNModel(DQNModel):
         if self._dueling:
             value = self._value(x).view(-1, 1, self._atoms_dim).expand_as(adv)
             probs = value + adv - adv.mean(dim=-1, keepdim=True).expand_as(adv)
-        if self._distribution_type == 'categorical':
-            return F.softmax(probs, dim=-1)
-        return probs
+        return F.softmax(probs, dim=-1)
+
+
+class QuantileDQNModel(DQNModel):
+    def __init__(self,
+                 phi: nn.Module,
+                 output_dim: int,
+                 quantiles_dim: int,
+                 noise_type: str = 'none',
+                 sigma_init: float = 0.5):
+        super(QuantileDQNModel, self).__init__(
+            phi, output_dim * quantiles_dim, False, noise_type, sigma_init)
+
+        self._output_dim = output_dim
+        self._quantiles_dim = quantiles_dim
+
+    def forward(self,
+                x: torch.Tensor,
+                sample_noise: bool = False) -> Dict[str, torch.Tensor]:
+        self.reset_noise()
+        if sample_noise:
+            self.sample_noise()
+        x = self._phi(x)
+
+        return self._advantage(x).view(-1, self._output_dim,
+                                       self._quantiles_dim)
 
 
 class Critic(nn.Module):
