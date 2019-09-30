@@ -1,7 +1,8 @@
-from copy import deepcopy
 import json
+import logging
 import os
 import re
+from copy import deepcopy
 from typing import Any
 
 import jsonschema
@@ -31,6 +32,7 @@ class CheckpointManager(object):
                  checkpoint_path: str,
                  history_length: int = 5):
         self._agent_type = agent_type
+        self._log_dir = checkpoint_path
         self._checkpoint = os.path.join(checkpoint_path, 'checkpoint_{}.pth')
         self._summary = os.path.join(checkpoint_path, 'checkpoint_summary.json')
         self._history_length = history_length
@@ -46,9 +48,9 @@ class CheckpointManager(object):
         if os.path.isfile(checkpoint):
             model = torch.load(checkpoint)
             step = self._get_checkpoint_step(checkpoint)
-            print('Checkpoint {} loaded'.format(step))
+            logging.info('Checkpoint {} loaded'.format(step))
             return model
-        print('Checkpoint not found')
+        logging.info('Checkpoint not found')
         return None
 
     def _create_checkpoint_summary(self):
@@ -93,6 +95,11 @@ class CheckpointManager(object):
         with open(self._summary) as summary_file:
             summary = json.load(summary_file)
             return summary['recent']
+
+    def _get_checkpoint(self, checkpoint_num) -> str:
+        with open(self._summary) as summary_file:
+            summary = json.load(summary_file)
+            return summary['previous'][str(checkpoint_num)]
 
     @staticmethod
     def _get_checkpoint_step(checkpoint) -> int:

@@ -1,4 +1,3 @@
-import copy
 from typing import Dict
 from typing import Tuple
 from typing import Union
@@ -22,7 +21,7 @@ class DummyNormalizer:
         return NotImplemented
 
     def load(self, state_dict: Dict[str, Union[np.ndarray, int]]):
-        return NotImplemented
+        state_dict
 
     def state_dict(self) -> Dict[str, Union[np.ndarray, int]]:
         state_dict = {}
@@ -49,10 +48,10 @@ class RMSNormalizer(DummyNormalizer):
         return np.clip(batch_input - mean / std, *self._clip)
 
     def update(self, batch_input: Union[np.ndarray, torch.Tensor]):
-        new_batch_input = copy.deepcopy(batch_input)
         if isinstance(batch_input, torch.Tensor):
-            new_batch_input = batch_input.cpu().numpy()
-        self._rms.update(new_batch_input)
+            self._rms.update(batch_input.clone().detach().cpu().numpy())
+            return
+        self._rms.update(batch_input)
 
     def load(self, state_dict: Dict[str, Union[np.ndarray, int]]):
         mean = state_dict['mean']

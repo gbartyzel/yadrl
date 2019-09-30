@@ -59,7 +59,7 @@ class DDPG(BaseOffPolicy):
         self._noise = self._get_noise(noise_type, mean, sigma, sigma_min,
                                       theta, n_step_annealing, dt)
 
-    def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
+    def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
         state = self._state_normalizer(state)
         self._pi.eval()
@@ -74,7 +74,7 @@ class DDPG(BaseOffPolicy):
     def reset(self):
         self._noise.reset()
 
-    def update(self):
+    def _update(self):
         batch = self._memory(self._batch_size, self._device)
         self._update_critic(batch)
         self._update_actor(batch)
@@ -115,19 +115,18 @@ class DDPG(BaseOffPolicy):
         model = self._checkpoint_manager.load()
         if model:
             self._pi.load_state_dict(model['actor'])
-            self._qv.load_state_dict(model['critic'])
-            self._reward_normalizer.load(model['reward_norm'])
-            self._state_normalizer.load(model['state_norm'])
+            self._step = model['step']
+            if 'state_norm' in model:
+                self._state_normalizer.load(model['state_norm'])
 
     def save(self):
         state_dict = dict()
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qv.state_dict()
-        if self._use_reward_normalization:
-            state_dict['reward_norm'] = self._reward_normalizer.state_dict()
+        state_dict['step'] = self._step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self.step)
+        self._checkpoint_manager.save(state_dict, self._step)
 
     def _get_noise(self, noise_type: str,
                    mean: float,

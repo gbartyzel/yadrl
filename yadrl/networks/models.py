@@ -25,15 +25,17 @@ class DQNModel(nn.Module):
         self._dueling = dueling
         self._phi = deepcopy(phi)
 
-        self._advantage = ValueHead(input_dim=self._phi.output_dim,
-                                    output_dim=output_dim,
-                                    noise_type=noise_type,
-                                    sigma_init=sigma_init)
+        self._advantage = ValueHead(
+            input_dim=self._phi.output_dim,
+            output_dim=output_dim,
+            noise_type=noise_type,
+            sigma_init=sigma_init)
         if dueling:
-            self._value = ValueHead(input_dim=self._phi.output_dim,
-                                    output_dim=1,
-                                    noise_type=noise_type,
-                                    sigma_init=sigma_init)
+            self._value = ValueHead(
+                input_dim=self._phi.output_dim,
+                output_dim=1,
+                noise_type=noise_type,
+                sigma_init=sigma_init)
 
     def forward(self,
                 x: torch.Tensor,
@@ -46,8 +48,7 @@ class DQNModel(nn.Module):
         adv = self._advantage(x)
         q_val = adv
         if self._dueling:
-            value = self._value(x).expand_as(adv)
-            q_val = value + adv - adv.mean(dim=1, keepdim=True).expand_as(adv)
+            q_val += (self._value(x) - adv.mean(dim=1, keepdim=True))
         return q_val
 
     def sample_noise(self):
@@ -76,25 +77,26 @@ class CategoricalDQNModel(DQNModel):
         self._atoms_dim = atoms_dim
 
         if dueling:
-            self._value = ValueHead(input_dim=self._phi.output_dim,
-                                    output_dim=atoms_dim,
-                                    noise_type=noise_type,
-                                    sigma_init=sigma_init)
+            self._value = ValueHead(
+                input_dim=self._phi.output_dim,
+                output_dim=atoms_dim,
+                noise_type=noise_type,
+                sigma_init=sigma_init)
 
     def forward(self,
                 x: torch.Tensor,
-                sample_noise: bool = False) -> Dict[str, torch.Tensor]:
+                sample_noise: bool = False) -> torch.Tensor:
         self.reset_noise()
         if sample_noise:
             self.sample_noise()
         x = self._phi(x)
 
         adv = self._advantage(x).view(-1, self._output_dim, self._atoms_dim)
-        probs = adv
+        dist = adv
         if self._dueling:
-            value = self._value(x).view(-1, 1, self._atoms_dim).expand_as(adv)
-            probs = value + adv - adv.mean(dim=-1, keepdim=True).expand_as(adv)
-        return F.softmax(probs, dim=-1)
+            value = self._value(x).view(-1, 1, self._atoms_dim)
+            dist += (value - adv.mean(dim=-1, keepdim=True))
+        return F.softmax(dist, dim=-1)
 
 
 class QuantileDQNModel(DQNModel):
@@ -102,13 +104,21 @@ class QuantileDQNModel(DQNModel):
                  phi: nn.Module,
                  output_dim: int,
                  quantiles_dim: int,
+                 dueling: bool = False,
                  noise_type: str = 'none',
                  sigma_init: float = 0.5):
         super(QuantileDQNModel, self).__init__(
-            phi, output_dim * quantiles_dim, False, noise_type, sigma_init)
+            phi, output_dim * quantiles_dim, dueling, noise_type, sigma_init)
 
         self._output_dim = output_dim
         self._quantiles_dim = quantiles_dim
+
+        if dueling:
+            self._value = ValueHead(
+                input_dim=self._phi.output_dim,
+                output_dim=quantiles_dim,
+                noise_type=noise_type,
+                sigma_init=sigma_init)
 
     def forward(self,
                 x: torch.Tensor,
@@ -118,8 +128,12 @@ class QuantileDQNModel(DQNModel):
             self.sample_noise()
         x = self._phi(x)
 
-        return self._advantage(x).view(-1, self._output_dim,
-                                       self._quantiles_dim)
+        adv = self._advantage(x).view(-1, self._output_dim, self._quantiles_dim)
+        quants = adv
+        if self._dueling:
+            value = self._value(x).view(-1, 1, self._quantiles_dim)
+            quants += (value - adv.mean(dim=-1, keepdim=True))
+        return quants
 
 
 class Critic(nn.Module):
@@ -186,8 +200,13 @@ class GaussianActor(nn.Module):
         super(GaussianActor, self).__init__()
         self._phi = phi
         self._head = GaussianPolicyHead(
-            self._phi.output_dim, output_dim, std_limits,
-            independent_std, squash, reparameterize, fan_init)
+            input_dim=self._phi.output_dim,
+            output_dim=output_dim,
+            std_limits=std_limits,
+            independent_std=independent_std,
+            squash=squash,
+            reparameterize=reparameterize,
+            fan_init=fan_init)
 
     def forward(self,
                 x: torch.Tensor,
@@ -214,7 +233,9 @@ class CategoricalActorCritic(nn.Module):
         super(CategoricalActorCritic, self).__init__()
         self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
-        self._policy = CategoricalPolicyHead(self._phi.output_dim, output_dim)
+        self._policy = CategoricalPolicyHead(
+            input_dim=self._phi.output_dim,
+            output_dim=output_dim)
 
     def forward(self,
                 x: torch.Tensor,
@@ -238,8 +259,12 @@ class GaussianActorCritic(nn.Module):
         self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
         self._policy = GaussianPolicyHead(
-            self._phi.output_dim, output_dim, std_limits,
-            independent_std, squash, fan_init)
+            input_dim=self._phi.output_dim,
+            output_dim=output_dim,
+            std_limits=std_limits,
+            independent_std=independent_std,
+            squash=squash,
+            fan_init=fan_init)
 
     def forward(self,
                 x: torch.Tensor,

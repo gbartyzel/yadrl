@@ -157,7 +157,7 @@ class CategoricalPolicyHead(nn.Module):
         self._logits = nn.Linear(input_dim, output_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.softmax(x, dim=1)
+        x = F.softmax(self._logits(x), dim=1)
         return x
 
     def sample(self,

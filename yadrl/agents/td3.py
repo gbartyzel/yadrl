@@ -58,7 +58,7 @@ class TD3(BaseOffPolicy):
         self._target_noise = GaussianNoise(
             self._action_dim, sigma=target_noise_std)
 
-    def act(self, state, train):
+    def _act(self, state, train):
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
         self._pi.eval()
         with torch.no_grad():
@@ -69,11 +69,11 @@ class TD3(BaseOffPolicy):
             action = torch.clamp(action + self._noise(), *self._action_limit)
         return action[0].numpy()
 
-    def update(self):
+    def _update(self):
         batch = self._memory.sample(self._batch_size, self._device)
         self._update_critic(batch)
 
-        if self.step % self._policy_update_frequency == 0:
+        if self._step % self._policy_update_frequency == 0:
             self._update_actor(batch)
             self._soft_update(self._qvs.parameters(),
                               self._target_qvs.parameters())
@@ -126,15 +126,15 @@ class TD3(BaseOffPolicy):
         if model:
             self._pi.load_state_dict(model['actor'])
             self._qvs.load_state_dict(model['critic'])
-            self._reward_normalizer.load(model['reward_norm'])
-            self._state_normalizer.load(model['state_norm'])
+            self._step = model['step']
+            if 'state_norm' in model:
+                self._state_normalizer.load(model['state_norm'])
 
     def save(self):
         state_dict = dict()
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qvs.state_dict()
-        if self._use_reward_normalization:
-            state_dict['reward_norm'] = self._reward_normalizer.state_dict()
+        state_dict['step'] = self._step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self.step)
+        self._checkpoint_manager.save(state_dict, self._step)

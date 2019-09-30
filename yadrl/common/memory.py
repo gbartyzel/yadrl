@@ -22,14 +22,8 @@ class RingBuffer:
         self._container = np.zeros((capacity,) + self._dimension)
 
     def add(self, value: Any):
-        if self._size < self._capacity:
-            self._container[self._size, :] = value
-            self._size += 1
-        elif self._size == self._capacity:
-            self._container = np.roll(self._container, -1, 0)
-            self._container[self._capacity - 1, :] = value
-        else:
-            raise ValueError
+        self._container[self._size, :] = value
+        self._size = (self._size + 1) % self._capacity
 
     def sample(self,
                idx: Union[Sequence[int], torch.Tensor],
@@ -81,6 +75,7 @@ class ReplayMemory(object):
         RingBuffer.TORCH_BACKEND = torch_backend
         self._capacity = capacity
         self._combined = combined
+        self._size = 0
 
         self._state_buffer = RingBuffer(capacity, state_dim)
         self._action_buffer = RingBuffer(capacity, action_dim)
@@ -94,6 +89,7 @@ class ReplayMemory(object):
              reward: Union[float, torch.Tensor],
              next_state: Union[float, torch.Tensor],
              terminal: Union[float, bool, torch.Tensor]):
+        self._size = min(self._size + 1, self._capacity)
         self._state_buffer.add(state)
         self._action_buffer.add(action)
         self._reward_buffer.add(reward)
@@ -108,17 +104,18 @@ class ReplayMemory(object):
         idxs = np.random.randint((self.size - 1), size=batch_size)
         if self._combined:
             idxs = np.append(idxs, np.array(self.size - 1, dtype=np.int32))
-        batch = Batch(state=self._state_buffer.sample(idxs, device),
-                      action=self._action_buffer.sample(idxs, device),
-                      reward=self._reward_buffer.sample(idxs, device),
-                      next_state=self._next_state_buffer.sample(idxs, device),
-                      mask=self._mask_buffer.sample(idxs, device))
+        batch = Batch(
+            state=self._state_buffer.sample(idxs, device),
+            action=self._action_buffer.sample(idxs, device),
+            reward=self._reward_buffer.sample(idxs, device),
+            next_state=self._next_state_buffer.sample(idxs, device),
+            mask=self._mask_buffer.sample(idxs, device))
 
         return batch
 
     @property
     def size(self) -> int:
-        return self._state_buffer.size
+        return self._size
 
     def __getitem__(self, item: int) -> Tuple[np.ndarray, ...]:
         state = self._state_buffer[item]
@@ -139,9 +136,9 @@ class Rollout:
         self._capacity = capacity
         self._discount_factor = discount_factor
 
-        self._state_buffer = RingBuffer(capacity, state_dim)
-        self._action_buffer = RingBuffer(capacity, action_dim)
-        self._reward_buffer = RingBuffer(capacity, 1)
+        self._state_buffer = np.zeros((capacity, state_dim))
+        self._action_buffer = np.zeros((capacity, action_dim))
+        self._reward_buffer = np.zeros((capacity, 1))
 
     @property
     def ready(self):
@@ -151,9 +148,9 @@ class Rollout:
              state: _DATA,
              action: _DATA,
              reward: Union[float, torch.Tensor]):
-        self._state_buffer.add(state)
-        self._action_buffer.add(action)
-        self._reward_buffer.add(reward)
+        self._state_buffer = self._add(self._state_buffer, state)
+        self._action_buffer = self._add(self._action_buffer, action)
+        self._reward_buffer = self._add(self._reward_buffer, reward)
         self._size = min(self._size + 1, self._capacity)
 
     def get_transition(self, state, action, reward, next_state, done):
@@ -166,9 +163,9 @@ class Rollout:
         return None
 
     def reset(self):
-        self._state_buffer.reset()
-        self._action_buffer.reset()
-        self._reward_buffer.reset()
+        self._state_buffer = np.zeros(self._state_buffer.shape)
+        self._action_buffer = np.zeros(self._action_buffer.shape)
+        self._reward_buffer = np.zeros(self._reward_buffer.shape)
         self._size = 0
 
     def _compute_cumulative_reward(self):
@@ -176,3 +173,22 @@ class Rollout:
         for t in range(self._capacity):
             cum_reward += self._discount_factor ** t * self._reward_buffer[t]
         return cum_reward
+
+    @staticmethod
+    def _add(buffer: np.ndarray, value: Any) -> np.ndarray:
+        buffer = np.roll(buffer, -1, 0)
+        buffer[-1] = value
+        return buffer
+
+
+if __name__ == '__main__':
+    mem = ReplayMemory(100, 3, 2)
+
+    for i in range(102):
+        state = np.ones(3) * i
+        action = np.ones(2) * (i * 2)
+        rewrd = np.sqrt(i)
+        next_state = np.ones(3) * (i + 1)
+        mem.push(state, action, rewrd, next_state, False)
+
+    print(mem[1])

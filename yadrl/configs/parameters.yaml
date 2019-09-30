@@ -1,53 +1,30 @@
 dqn:
-  lrate: 0.001
+  lrate: 0.0005
   discount_factor: 0.99
-  polyak_factor: 0.01
-  n_step: 1
-  epsilon_annealing_steps: 2000
+  polyak_factor: 0.001
+  n_step: 3
+  epsilon_annealing_steps: 10000
   epsilon_min: 0.01
-  memory_capacity: 2000
-  batch_size: 32
+  memory_capacity: 100000
+  batch_size: 64
+  adam_eps: 0.0003125
   grad_norm_value: 10.0
-  warm_up_steps: 1000
-  update_frequency: 1
-  v_min: -100.0
-  v_max: 100.0
+  warm_up_steps: 10000
+  update_frequency: 4
+  v_min: -200.0
+  v_max: 200.0
   atoms_dim: 51
+  quantiles_dim: 200
   noise_type: 'factorized'
-  use_soft_update: True
+  use_soft_update: False
   use_double_q: True
-  use_dueling: True
-  use_categorical: True
+  use_dueling: False
+  distribution_type: 'categorical'
   use_combined_experience_replay: True
-  use_reward_normalization: True
-  use_state_normalization: False
-  reward_norm_clip: [-5.0, 5.0]
+  use_state_normalization: True
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/dqn"
-  seed: 1
-qrdqn:
-  lrate: 0.001
-  discount_factor: 0.99
-  polyak_factor: 0.01
-  n_step: 1
-  epsilon_annealing_steps: 2000
-  epsilon_min: 0.01
-  memory_capacity: 2000
-  batch_size: 64
-  grad_norm_value: 0.0
-  quantiles_dim: 200
-  warm_up_steps: 1000
-  update_frequency: 1
-  noise_type: 'factorized'
-  use_soft_update: True
-  use_double_q: False
-  use_combined_experience_replay: True
-  use_reward_normalization: False
-  use_state_normalization: False
-  reward_norm_clip: [-5.0, 5.0]
-  state_norm_clip: [-5.0, 5.0]
-  logdir: "./output/qrdqn"
-  seed: 1
+  seed: 1337
 ddpg:
   actor_lrate: 0.0001
   critic_lrate: 0.001
@@ -68,9 +45,7 @@ ddpg:
   warm_up_steps: 10000
   update_frequency: 1
   use_combined_experience_replay: True
-  use_reward_normalization: False
   use_state_normalization: False
-  reward_norm_clip: [-5.0, 5.0]
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/ddpg"
   seed: 1
@@ -90,16 +65,16 @@ td3:
   warm_up_steps: 10000
   update_frequency: 1
   use_combined_experience_replay: True
-  use_reward_normalization: False
   use_state_normalization: False
-  reward_norm_clip: [-5.0, 5.0]
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/td3"
   seed: 1
 sac:
-  policy_lrate: 0.0003
-  q_values_lrate: 0.0003
+  pi_lrate: 0.0003
+  qvs_lrate: 0.0003
   alpha_lrate: 0.0003
+  pi_grad_norm_value: 0.0
+  qvs_grad_norm_value: 0.0
   discount_factor: 0.99
   polyak_factor: 0.005
   n_step: 1
@@ -108,9 +83,7 @@ sac:
   warm_up_steps: 10000
   update_frequency: 1
   use_combined_experience_replay: True
-  use_reward_normalization: False
   use_state_normalization: False
-  reward_norm_clip: [-5.0, 5.0]
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/sac"
   seed: 1

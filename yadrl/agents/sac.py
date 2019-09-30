@@ -50,7 +50,7 @@ class SAC(BaseOffPolicy):
         self.load()
         self._target_qvs.load_state_dict(self._qvs.state_dict())
 
-    def act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
+    def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
         self._pi.eval()
         with torch.no_grad():
@@ -61,7 +61,7 @@ class SAC(BaseOffPolicy):
         self._pi.train()
         return action[0].cpu().numpy()
 
-    def update(self):
+    def _update(self):
         batch = self._memory.sample(self._batch_size, self._device)
         self._update_parameters(*self._compute_loses(batch))
         self._soft_update(self._qvs.parameters(), self._target_qvs.parameters())
@@ -127,15 +127,19 @@ class SAC(BaseOffPolicy):
         if model:
             self._pi.load_state_dict(model['actor'])
             self._qvs.load_state_dict(model['critic'])
-            self._reward_normalizer.load(model['reward_norm'])
-            self._state_normalizer.load(model['state_norm'])
+            self._step = model['step']
+            if 'reward_norm' in model:
+                self._reward_normalizer.load(model['reward_norm'])
+            if 'state_norm' in model:
+                self._state_normalizer.load(model['state_norm'])
 
     def save(self):
         state_dict = dict()
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qvs.state_dict()
+        state_dict['step'] = self._step
         if self._use_reward_normalization:
             state_dict['reward_norm'] = self._reward_normalizer.state_dict()
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self.step)
+        self._checkpoint_manager.save(state_dict, self._step)
