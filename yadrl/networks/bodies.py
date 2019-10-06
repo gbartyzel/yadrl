@@ -88,8 +88,9 @@ class BNMLPNetwork(_BaseMLPNetwork):
     def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
         if isinstance(x, tuple):
             x = torch.cat(x, dim=1)
-        for i in range(len(self._body) - 1):
-            x = self._activation_fn(self._body[i + 1](self._body[i](x)))
+        for i in range(len(self._body) // 2):
+            x = self._body[2 * i + 1](self._body[2 * i](x))
+            x = self._activation_fn(x)
         return x
 
 
@@ -112,8 +113,38 @@ class DDPGMLPNetwork(_BaseMLPNetwork):
         self._dense_2.weight.data.uniform_(*fan_init(self._dense_2.weight))
         self._dense_2.bias.data.fill_(0)
 
-    def forward(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
-        x = self._activation_fn(self._dense_1(x))
+    def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
+        u = x[1]
+        x = self._activation_fn(self._dense_1(x[0]))
         x = torch.cat((x, u), dim=1)
         x = self._activation_fn(self._dense_2(x))
+        return x
+
+
+class DDPGBNMLPNetwork(_BaseMLPNetwork):
+    def __init__(self,
+                 input_dim: Tuple[int, int],
+                 hidden_dim: Tuple[int, int],
+                 activation_fn: Callable = F.relu):
+        super(DDPGBNMLPNetwork, self).__init__(input_dim, hidden_dim[-1],
+                                               activation_fn)
+
+        self._size = len(hidden_dim)
+        self._dense_1 = nn.Linear(input_dim[0], hidden_dim[0])
+        self._bn_1 = nn.BatchNorm1d(hidden_dim[0])
+        self._dense_2 = nn.Linear(input_dim[1] + hidden_dim[0], hidden_dim[1])
+        self._bn_2 = nn.BatchNorm1d(hidden_dim[1])
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self._dense_1.weight.data.uniform_(*fan_init(self._dense_1.weight))
+        self._dense_1.bias.data.fill_(0)
+        self._dense_2.weight.data.uniform_(*fan_init(self._dense_2.weight))
+        self._dense_2.bias.data.fill_(0)
+
+    def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
+        u = x[1]
+        x = self._activation_fn(self._bn_1(self._dense_1(x[0])))
+        x = torch.cat((x, u), dim=1)
+        x = self._activation_fn(self._bn_2(self._dense_2(x)))
         return x

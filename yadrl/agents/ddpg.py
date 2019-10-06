@@ -1,3 +1,4 @@
+import copy
 from typing import NoReturn
 from typing import Optional
 from typing import Sequence
@@ -41,16 +42,17 @@ class DDPG(BaseOffPolicy):
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qv_grad_norm_value = qv_grad_norm_value
 
-        self._pi = DeterministicActor(pi_phi, self._action_dim, True).to(
-            self._device)
+        self._pi = DeterministicActor(
+            phi=pi_phi,
+            output_dim=self._action_dim,
+            fan_init=True).to(self._device)
         self._pi_optim = optim.Adam(self._pi.parameters(), lr=pi_lrate)
-        self._target_pi = DeterministicActor(
-            pi_phi, self._action_dim, True).to(self._device)
+        self._target_pi = copy.deepcopy(self._pi).to(self._device)
 
-        self._qv = Critic(qv_phi)
+        self._qv = Critic(phi=qv_phi).to(self._device)
         self._qv_optim = optim.Adam(
             self._qv.parameters(), qv_lrate, weight_decay=l2_reg_value)
-        self._target_qv = Critic(qv_phi).to(self._device)
+        self._target_qv = copy.deepcopy(self._qv).to(self._device)
 
         self.load()
         self._target_pi.load_state_dict(self._pi.state_dict())
@@ -61,21 +63,22 @@ class DDPG(BaseOffPolicy):
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
-        state = self._state_normalizer(state)
+        state = self._state_normalizer(state, self._device)
         self._pi.eval()
         with torch.no_grad():
             action = self._pi(state)
-        self._pi.eval()
+        self._pi.train()
 
         if train:
-            action = torch.clamp(action + self._noise(), *self._action_limit)
-        return action.cpu().numpy()
+            noise = self._noise().to(self._device)
+            action = torch.clamp(action + noise, *self._action_limit)
+        return action[0].cpu().numpy()
 
     def reset(self):
         self._noise.reset()
 
     def _update(self):
-        batch = self._memory(self._batch_size, self._device)
+        batch = self._memory.sample(self._batch_size, self._device)
         self._update_critic(batch)
         self._update_actor(batch)
 
@@ -83,14 +86,14 @@ class DDPG(BaseOffPolicy):
         self._soft_update(self._qv.parameters(), self._target_qv.parameters())
 
     def _update_critic(self, batch: Batch):
-        state = self._state_normalizer(batch.state)
-        next_state = self._state_normalizer(batch.next_state)
+        state = self._state_normalizer(batch.state, self._device)
+        next_state = self._state_normalizer(batch.next_state, self._device)
 
-        next_action = self._target_pi(batch.next_state)
-        target_next_q = self._target_qv(
-            next_state, next_action).view(-1, 1).detach()
+        with torch.no_grad():
+            next_action = self._target_pi(batch.next_state)
+            target_next_q = self._target_qv(next_state, next_action).view(-1, 1)
 
-        target_q = self._td_target(batch.reward, batch.mask, target_next_q)
+            target_q = self._td_target(batch.reward, batch.mask, target_next_q)
         expected_q = self._qv(state, batch.action)
 
         loss = mse_loss(expected_q, target_q)
@@ -102,9 +105,10 @@ class DDPG(BaseOffPolicy):
         self._qv_optim.step()
 
     def _update_actor(self, batch: Batch):
-        state = self._state_normalizer(batch.state)
-        loss = -self._qv(state, self._pi(state))
+        state = self._state_normalizer(batch.state, self._device)
+        loss = torch.mean(-self._qv(state, self._pi(state)))
         self._pi_optim.zero_grad()
+
         loss.backward()
         if self._pi_grad_norm_value > 0.0:
             nn.utils.clip_grad_norm_(self._pi.parameters(),
@@ -149,3 +153,13 @@ class DDPG(BaseOffPolicy):
                 sigma_min=sigma_min, n_step_annealing=n_step_annealing, dt=dt)
         else:
             raise ValueError
+
+    @property
+    def parameters(self):
+        return list(self._qv.named_parameters()) + \
+               list(self._pi.named_parameters())
+
+    @property
+    def target_parameters(self):
+        return list(self._target_qv.named_parameters()) + \
+               list(self._target_pi.named_parameters())

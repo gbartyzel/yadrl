@@ -104,7 +104,6 @@ class BaseOffPolicy(abc.ABC):
                 self._state = self._env.reset()
                 if self._step > 0:
                     self._log(sum(total_reward))
-                    self._loss = 0.0
                 total_reward = []
         pb.close()
 
@@ -188,5 +187,5 @@ class BaseOffPolicy(abc.ABC):
         return NotImplementedError
 
     @abc.abstractmethod
-    def save(self):
+    def save(self, criterion_value: Any):
         return NotImplementedError

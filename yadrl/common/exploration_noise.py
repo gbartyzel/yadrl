@@ -5,7 +5,7 @@ import torch
 
 
 class GaussianNoise(object):
-    TORCH_BACKEND = False
+    TORCH_BACKEND = True
 
     def __init__(self,
                  dim: int,
@@ -96,7 +96,10 @@ class OUNoise(AdaptiveGaussianNoise):
         """
         Reset state of the noise
         """
-        self._state = torch.ones(self._dim) * self._mean
+        if GaussianNoise.TORCH_BACKEND:
+            self._state = torch.ones(self._dim) * self._mean
+        else:
+            self._state = np.ones(self._dim) * self._mean
 
     def __call__(self) -> Union[np.ndarray, torch.Tensor]:
         """

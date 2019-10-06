@@ -137,7 +137,7 @@ class QuantileDQNModel(DQNModel):
 
 
 class Critic(nn.Module):
-    def __init__(self, phi):
+    def __init__(self, phi: nn.Module):
         super(Critic, self).__init__()
         self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
@@ -146,31 +146,47 @@ class Critic(nn.Module):
         return self._value(self._phi(x))
 
 
+class DistributionalCritic(nn.Module):
+    def __init__(self,
+                 phi: nn.Module,
+                 distribution_type: str,
+                 support_dim: int):
+        super(DistributionalCritic, self).__init__()
+        assert distribution_type in ('categorical', 'quantile')
+
+        self._phi = deepcopy(phi)
+        self._dist = ValueHead(self._phi.output_dim, support_dim)
+        self._support_dim = support_dim
+        self._distribution_type = distribution_type
+
+    def forward(self, *x):
+        probs = self._dist(x).view(-1, 1, self._support_dim)
+        if self._distribution_type == 'categorical':
+            return F.softmax(probs, dim=-1)
+        return probs
+
+
 class DoubleCritic(nn.Module):
     def __init__(self, phi: Tuple[nn.Module, nn.Module]):
         super(DoubleCritic, self).__init__()
-        self._phi_1 = deepcopy(phi[0])
-        self._phi_2 = deepcopy(phi[1])
-        self._value_1 = ValueHead(self._phi_1.output_dim)
-        self._value_2 = ValueHead(self._phi_2.output_dim)
+        self._critic_1 = Critic(phi[0])
+        self._critic_2 = Critic(phi[1])
 
     def q1_parameters(self):
-        return tuple(self._phi_1.parameters()) \
-               + tuple(self._value_1.parameters())
+        return self._critic_1.parameters()
 
     def q2_parameters(self):
-        return tuple(self._phi_2.parameters()) \
-               + tuple(self._value_2.parameters())
+        return self._critic_2.parameters()
 
     def forward(self,
                 *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
-        return self._value_1(self._phi_1(x)), self._value_2(self._phi_2(x))
+        return self._critic_1(x), self._critic_2(x)
 
     def eval_v1(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._value_1(self._phi_1(x))
+        return self._critic_1(x)
 
     def eval_v2(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._value_2(self._phi_1(x))
+        return self._critic_2(x)
 
 
 class DeterministicActor(nn.Module):
@@ -182,7 +198,10 @@ class DeterministicActor(nn.Module):
         super(DeterministicActor, self).__init__()
         self._phi = deepcopy(phi)
         self._head = DeterministicPolicyHead(
-            self._phi.output_dim, output_dim, fan_init, activation_fn)
+            input_dim=self._phi.output_dim,
+            output_dim=output_dim,
+            fan_init=fan_init,
+            activation_fn=activation_fn)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self._head(self._phi(x))

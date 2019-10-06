@@ -1,5 +1,6 @@
 import random
 from copy import deepcopy
+from typing import Any
 from typing import NoReturn
 
 import numpy as np
@@ -220,13 +221,13 @@ class DQN(BaseOffPolicy):
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
 
-    def save(self):
+    def save(self, criterion_value: Any):
         state_dict = dict()
         state_dict['model'] = self._qv.state_dict()
         state_dict['step'] = self._step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self._step)
+        self._checkpoint_manager.save(state_dict, self._step, criterion_value)
 
     @property
     def parameters(self):
