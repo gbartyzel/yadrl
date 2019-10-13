@@ -29,7 +29,6 @@ class DQN(BaseOffPolicy):
                  atoms_dim: int = 51,
                  quantiles_dim: int = 50,
                  noise_type: str = 'none',
-                 use_soft_update: bool = False,
                  use_double_q: bool = False,
                  use_dueling: bool = False,
                  distribution_type: str = 'none', **kwargs):
@@ -41,12 +40,8 @@ class DQN(BaseOffPolicy):
         self._grad_norm_value = grad_norm_value
 
         self._use_double_q = use_double_q
-        self._use_soft_update = use_soft_update
         self._use_noise = noise_type != 'none'
         self._distribution_type = distribution_type
-
-        if not use_soft_update:
-            self._polyak = int(1.0 / self._polyak)
 
         self._epsilon_scheduler = LinearScheduler(
             start_value=1.0,
@@ -120,12 +115,8 @@ class DQN(BaseOffPolicy):
             nn.utils.clip_grad_norm_(self._qv.parameters(),
                                      self._grad_norm_value)
         self._optim.step()
-        if self._use_soft_update:
-            self._soft_update(self._qv.parameters(),
-                              self._target_qv.parameters())
 
-        if not self._use_soft_update and self._step % self._polyak == 0:
-            self._hard_update(self._qv, self._target_qv)
+        self._update_target(self._qv, self._target_qv)
 
     def _compute_td_loss(self, batch):
         state = self._state_normalizer(batch.state, self._device)

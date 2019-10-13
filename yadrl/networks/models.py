@@ -3,6 +3,7 @@ from typing import Callable
 from typing import Dict
 from typing import Optional
 from typing import Tuple
+from typing import Union
 
 import torch
 import torch.nn as nn
@@ -167,10 +168,14 @@ class DistributionalCritic(nn.Module):
 
 
 class DoubleCritic(nn.Module):
-    def __init__(self, phi: Tuple[nn.Module, nn.Module]):
+    def __init__(self, phi: Union[Tuple[nn.Module, nn.Module], nn.Module]):
         super(DoubleCritic, self).__init__()
-        self._critic_1 = Critic(phi[0])
-        self._critic_2 = Critic(phi[1])
+        if isinstance(phi, tuple):
+            self._critic_1 = Critic(phi[0])
+            self._critic_2 = Critic(phi[1])
+        else:
+            self._critic_1 = Critic(phi)
+            self._critic_2 = Critic(phi)
 
     def q1_parameters(self):
         return self._critic_1.parameters()
@@ -180,13 +185,7 @@ class DoubleCritic(nn.Module):
 
     def forward(self,
                 *x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
-        return self._critic_1(x), self._critic_2(x)
-
-    def eval_v1(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._critic_1(x)
-
-    def eval_v2(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._critic_2(x)
+        return self._critic_1(*x), self._critic_2(*x)
 
 
 class DeterministicActor(nn.Module):

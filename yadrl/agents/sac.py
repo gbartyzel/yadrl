@@ -1,3 +1,4 @@
+import copy
 from typing import NoReturn
 from typing import Optional
 
@@ -15,28 +16,28 @@ from yadrl.networks.models import GaussianActor, DoubleCritic
 class SAC(BaseOffPolicy):
     def __init__(self,
                  pi_phi: nn.Module,
-                 qvs_phi: nn.Module,
+                 qv_phi: nn.Module,
                  pi_lrate: float,
-                 qvs_lrate: float,
+                 qv_lrate: float,
                  alpha_lrate: float,
                  pi_grad_norm_value: float,
-                 qvs_grad_norm_value: float,
+                 qv_grad_norm_value: float,
                  reward_scaling: Optional[float] = 1.0,
                  alpha_tuning: bool = True,
                  **kwargs):
 
         super(SAC, self).__init__(agent_type='sac', **kwargs)
         self._pi_grad_norm_value = pi_grad_norm_value
-        self._qvs_grad_norm_value = qvs_grad_norm_value
+        self._qvs_grad_norm_value = qv_grad_norm_value
 
         self._pi = GaussianActor(
             pi_phi, self._action_dim).to(self._device)
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
-        self._qvs = DoubleCritic((qvs_phi, qvs_phi)).to(self._device)
-        self._target_qvs = DoubleCritic((qvs_phi, qvs_phi)).to(self._device)
-        self._qv_1_optim = optim.Adam(self._qvs.q1_parameters(), qvs_lrate)
-        self._qv_2_optim = optim.Adam(self._qvs.q2_parameters(), qvs_lrate)
+        self._qv = DoubleCritic(qv_phi).to(self._device)
+        self._target_qv = copy.deepcopy(self._qv).to(self._device)
+        self._qv_1_optim = optim.Adam(self._qv.q1_parameters(), qv_lrate)
+        self._qv_2_optim = optim.Adam(self._qv.q2_parameters(), qv_lrate)
 
         self._alpha_tuning = alpha_tuning
         if alpha_tuning:
@@ -48,7 +49,7 @@ class SAC(BaseOffPolicy):
         self._reward_scaling = reward_scaling
 
         self.load()
-        self._target_qvs.load_state_dict(self._qvs.state_dict())
+        self._target_qv.load_state_dict(self._qv.state_dict())
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
@@ -64,24 +65,24 @@ class SAC(BaseOffPolicy):
     def _update(self):
         batch = self._memory.sample(self._batch_size, self._device)
         self._update_parameters(*self._compute_loses(batch))
-        self._soft_update(self._qvs.parameters(), self._target_qvs.parameters())
+        self._update_target(self._qv, self._target_qv)
 
     def _compute_loses(self, batch: Batch):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        next_action, log_prob, _ = self._pi(next_state)
-        target_next_q = torch.min(*self._target_qvs(next_state, next_action))
-        target_next_v = target_next_q - self._alpha * log_prob
-        target_q = self._td_target(batch.reward, batch.mask,
-                                   target_next_v).detach()
-        expected_q1, expected_q2 = self._qvs(state, batch.action)
+        with torch.no_grad():
+            next_action, log_prob, _ = self._pi(next_state)
+            target_next_q = torch.min(*self._target_qv(next_state, next_action))
+            target_next_v = target_next_q - self._alpha * log_prob
+            target_q = self._td_target(batch.reward, batch.mask, target_next_v)
+        expected_q1, expected_q2 = self._qv(state, batch.action)
 
         q1_loss = mse_loss(expected_q1, target_q)
         q2_loss = mse_loss(expected_q2, target_q)
 
         action, log_prob, _ = self._pi(state)
-        target_log_prob = torch.min(*self._qvs(state, action))
+        target_log_prob = torch.min(*self._qv(state, action))
         policy_loss = torch.mean(self._alpha * log_prob - target_log_prob)
 
         if self._alpha_tuning:
@@ -97,14 +98,14 @@ class SAC(BaseOffPolicy):
         self._qv_1_optim.zero_grad()
         q1_loss.backward()
         if self._qvs_grad_norm_value > 0.0:
-            nn.utils.clip_grad_norm_(self._qvs.q1_parameters(),
+            nn.utils.clip_grad_norm_(self._qv.q1_parameters(),
                                      self._qvs_grad_norm_value)
         self._qv_1_optim.step()
 
         self._qv_2_optim.zero_grad()
         q2_loss.backward()
         if self._qvs_grad_norm_value > 0.0:
-            nn.utils.clip_grad_norm_(self._qvs.q1_parameters(),
+            nn.utils.clip_grad_norm_(self._qv.q2_parameters(),
                                      self._qvs_grad_norm_value)
         self._qv_2_optim.step()
 
@@ -126,20 +127,25 @@ class SAC(BaseOffPolicy):
         model = self._checkpoint_manager.load()
         if model:
             self._pi.load_state_dict(model['actor'])
-            self._qvs.load_state_dict(model['critic'])
+            self._qv.load_state_dict(model['critic'])
             self._step = model['step']
-            if 'reward_norm' in model:
-                self._reward_normalizer.load(model['reward_norm'])
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
 
     def save(self):
         state_dict = dict()
         state_dict['actor'] = self._pi.state_dict(),
-        state_dict['critic'] = self._qvs.state_dict()
+        state_dict['critic'] = self._qv.state_dict()
         state_dict['step'] = self._step
-        if self._use_reward_normalization:
-            state_dict['reward_norm'] = self._reward_normalizer.state_dict()
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
         self._checkpoint_manager.save(state_dict, self._step)
+
+    @property
+    def parameters(self):
+        return list(self._qv.named_parameters()) + \
+               list(self._pi.named_parameters())
+
+    @property
+    def target_parameters(self):
+        return self._target_qv.named_parameters()

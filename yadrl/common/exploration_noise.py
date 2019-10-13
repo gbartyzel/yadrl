@@ -42,7 +42,10 @@ class AdaptiveGaussianNoise(GaussianNoise):
         super(AdaptiveGaussianNoise, self).__init__(dim, mean, sigma)
 
         self._sigma_min = sigma_min
-        self._sigma_decay_factor = (sigma - sigma_min) / n_step_annealing
+        if n_step_annealing == 0:
+            self._sigma_decay_factor = 0
+        else:
+            self._sigma_decay_factor = (sigma - sigma_min) / n_step_annealing
 
     def reset(self):
         return

@@ -20,22 +20,27 @@ class BaseOffPolicy(abc.ABC):
     def __init__(self,
                  env: gym.Env,
                  agent_type: str,
-                 discount_factor: float,
-                 polyak_factor: float,
-                 n_step: int,
-                 memory_capacity: int,
-                 batch_size: int,
-                 warm_up_steps: int,
-                 update_frequency: int,
-                 logdir: str,
-                 seed: int = 1337,
+                 discount_factor: float = 0.99,
+                 n_step: int = 1,
+                 memory_capacity: int = int(1e5),
+                 batch_size: int = 64,
+                 warm_up_steps: int = 64,
+                 reward_scaling: float = 1.0,
+                 polyak_factor: float = 0.001,
+                 update_frequency: int = 1,
+                 target_update_frequency: int = 1000,
+                 update_steps: int = 4,
+                 use_soft_update: bool = False,
                  use_combined_experience_replay: bool = False,
                  use_state_normalization: bool = False,
-                 state_norm_clip: Tuple[float, float] = (-5.0, 5.0)):
+                 state_norm_clip: Tuple[float, float] = (-5.0, 5.0),
+                 logdir: str = './output',
+                 seed: int = 1337):
         super(BaseOffPolicy, self).__init__()
         self._env = env
         self._state = None
         self._step = 0
+        self._update_step = 0
         self._set_seeds(seed)
 
         self._device = torch.device(
@@ -52,12 +57,18 @@ class BaseOffPolicy(abc.ABC):
             memory_action = 1
 
         self._discount = discount_factor ** n_step
-        self._polyak = polyak_factor
         self._n_step = n_step
+        self._reward_scaling = reward_scaling
 
         self._batch_size = batch_size
         self._warm_up_steps = warm_up_steps
+
+        self._use_soft_update = use_soft_update
+        self._polyak = polyak_factor
         self._update_frequency = update_frequency
+        self._target_update_frequency = target_update_frequency
+
+        self._update_steps = update_steps
 
         self._checkpoint_manager = CheckpointManager(agent_type, logdir)
 
@@ -131,9 +142,18 @@ class BaseOffPolicy(abc.ABC):
         if self._memory.size >= self._warm_up_steps:
             self._step += 1
             if self._step % self._update_frequency == 0:
-                self._update()
+                for _ in range(self._update_steps):
+                    self._update_step += 1
+                    self._update()
         if done:
             self._rollout.reset()
+
+    def _update_target(self, model: nn.Module, target_model: nn.Module):
+        if self._use_soft_update:
+            self._soft_update(model.parameters(), target_model.parameters())
+        else:
+            if self._update_step % self._target_update_frequency == 0:
+                target_model.load_state_dict(model.state_dict())
 
     def _soft_update(self, params: nn.parameter, target_params: nn.parameter):
         for param, t_param in zip(params, target_params):

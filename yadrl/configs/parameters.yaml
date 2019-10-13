@@ -28,32 +28,36 @@ dqn:
 ddpg:
   pi_lrate: 0.0001
   qv_lrate: 0.001
-  l2_reg_value: 0.001
+  l2_reg_value: 0.00
   pi_grad_norm_value: 0.0
   qv_grad_norm_value: 0.0
   discount_factor: 0.99
   polyak_factor: 0.001
-  n_step: 3
+  n_step: 1
   action_limit: [-1.0, 1.0]
   noise_type: "ou"
   mean: 0.0
   sigma: 0.2
   sigma_min: 0.01
-  n_step_annealing: 250000
+  n_step_annealing: 0
   theta: 0.15
   dt: 0.01
   memory_capacity: 1000000
   batch_size: 64
   warm_up_steps: 10000
-  update_frequency: 4
+  update_frequency: 1
+  target_update_frequency: 1000
+  use_soft_update: True
   use_combined_experience_replay: False
   use_state_normalization: False
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/ddpg"
   seed: 1
 td3:
-  actor_lrate: 0.001
-  critic_lrate: 0.001
+  pi_lrate: 0.001
+  qvs_lrate: 0.001
+  pi_grad_norm_value: 0.0
+  qvs_grad_norm_value: 0.0
   discount_factor: 0.99
   polyak_factor: 0.005
   n_step: 1
@@ -66,25 +70,29 @@ td3:
   batch_size: 100
   warm_up_steps: 10000
   update_frequency: 1
-  use_combined_experience_replay: True
+  target_update_frequency: 1000
+  use_soft_update: True
+  use_combined_experience_replay: False
   use_state_normalization: False
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/td3"
   seed: 1
 sac:
   pi_lrate: 0.0003
-  qvs_lrate: 0.0003
+  qv_lrate: 0.0003
   alpha_lrate: 0.0003
   pi_grad_norm_value: 0.0
-  qvs_grad_norm_value: 0.0
+  qv_grad_norm_value: 0.0
   discount_factor: 0.99
   polyak_factor: 0.005
-  n_step: 1
+  n_step: 5
   memory_capacity: 1000000
   batch_size: 256
   warm_up_steps: 10000
   update_frequency: 1
-  use_combined_experience_replay: True
+  target_update_frequency: 1000
+  use_soft_update: True
+  use_combined_experience_replay: False
   use_state_normalization: False
   state_norm_clip: [-5.0, 5.0]
   logdir: "./output/sac"

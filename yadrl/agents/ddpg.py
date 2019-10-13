@@ -82,8 +82,8 @@ class DDPG(BaseOffPolicy):
         self._update_critic(batch)
         self._update_actor(batch)
 
-        self._soft_update(self._pi.parameters(), self._target_pi.parameters())
-        self._soft_update(self._qv.parameters(), self._target_qv.parameters())
+        self._update_target(self._pi, self._target_pi)
+        self._update_target(self._qv, self._target_qv)
 
     def _update_critic(self, batch: Batch):
         state = self._state_normalizer(batch.state, self._device)
