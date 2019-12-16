@@ -1,6 +1,5 @@
 import copy
 from typing import NoReturn
-from typing import Optional
 
 import numpy as np
 import torch
@@ -10,7 +9,8 @@ import torch.optim as optim
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks.models import GaussianActor, DoubleCritic
+from yadrl.networks.models import DoubleCritic
+from yadrl.networks.models import GaussianActor
 
 
 class SAC(BaseOffPolicy):
@@ -20,9 +20,8 @@ class SAC(BaseOffPolicy):
                  pi_lrate: float,
                  qv_lrate: float,
                  alpha_lrate: float,
-                 pi_grad_norm_value: float,
-                 qv_grad_norm_value: float,
-                 reward_scaling: Optional[float] = 1.0,
+                 pi_grad_norm_value: float = 0.0,
+                 qv_grad_norm_value: float = 0.0,
                  alpha_tuning: bool = True,
                  **kwargs):
 
@@ -45,8 +44,7 @@ class SAC(BaseOffPolicy):
             self._log_alpha = torch.zeros(
                 1, requires_grad=True, device=self._device)
             self._alpha_optim = optim.Adam([self._log_alpha], lr=alpha_lrate)
-        self._alpha = 1.0 / reward_scaling
-        self._reward_scaling = reward_scaling
+        self._alpha = 1.0 / self._reward_scaling
 
         self.load()
         self._target_qv.load_state_dict(self._qv.state_dict())
@@ -94,7 +92,6 @@ class SAC(BaseOffPolicy):
         return q1_loss, q2_loss, policy_loss, alpha_loss
 
     def _update_parameters(self, q1_loss, q2_loss, policy_loss, alpha_loss):
-
         self._qv_1_optim.zero_grad()
         q1_loss.backward()
         if self._qvs_grad_norm_value > 0.0:
@@ -123,11 +120,12 @@ class SAC(BaseOffPolicy):
 
             self._alpha = torch.exp(self._log_alpha)
 
-    def load(self) -> NoReturn:
-        model = self._checkpoint_manager.load()
+    def load(self, path: str) -> NoReturn:
+        model = torch.load(path)
         if model:
             self._pi.load_state_dict(model['actor'])
             self._qv.load_state_dict(model['critic'])
+            self._target_qv.load_state_dict(model['target_critic'])
             self._step = model['step']
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
@@ -136,10 +134,11 @@ class SAC(BaseOffPolicy):
         state_dict = dict()
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qv.state_dict()
+        state_dict['target_critic'] = self._target_qv.state_dict()
         state_dict['step'] = self._step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self._step)
+        torch.save(state_dict, 'model_{}.pth'.format(self._step))
 
     @property
     def parameters(self):

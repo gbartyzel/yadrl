@@ -12,7 +12,8 @@ from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks.models import DeterministicActor, DoubleCritic
+from yadrl.networks.models import DeterministicActor
+from yadrl.networks.models import DoubleCritic
 
 
 class TD3(BaseOffPolicy):
@@ -109,11 +110,12 @@ class TD3(BaseOffPolicy):
                                      self._pi_grad_norm_value)
         self._pi_optim.step()
 
-    def load(self) -> NoReturn:
-        model = self._checkpoint_manager.load()
+    def load(self, path: str) -> NoReturn:
+        model = torch.load(str)
         if model:
             self._pi.load_state_dict(model['actor'])
             self._qv.load_state_dict(model['critic'])
+            self._target_qv.load_state_dict(model['target_critic'])
             self._step = model['step']
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
@@ -122,10 +124,11 @@ class TD3(BaseOffPolicy):
         state_dict = dict()
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qv.state_dict()
+        state_dict['target_critic'] = self._target_qv.state_dict()
         state_dict['step'] = self._step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self._step)
+        torch.save(state_dict, 'model_{}.sth'.format(self._step))
 
     @property
     def parameters(self):

@@ -22,12 +22,12 @@ def orthogonal_init(x: nn.Module):
         nn.init.constant_(x.bias.data, 0.0)
 
 
-class _BaseMLPNetwork(nn.Module):
+class BaseMLPNetwork(nn.Module):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  output_dim: int,
                  activation_fn: Union[Callable, nn.Module] = F.relu):
-        super(_BaseMLPNetwork, self).__init__()
+        super(BaseMLPNetwork, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self._activation_fn = activation_fn
@@ -36,7 +36,7 @@ class _BaseMLPNetwork(nn.Module):
         return NotImplementedError
 
 
-class MLPNetwork(_BaseMLPNetwork):
+class MLPNetwork(BaseMLPNetwork):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  hidden_dim: Tuple[int, ...],
@@ -64,7 +64,7 @@ class MLPNetwork(_BaseMLPNetwork):
         return x
 
 
-class BNMLPNetwork(_BaseMLPNetwork):
+class BNMLPNetwork(BaseMLPNetwork):
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],
                  hidden_dim: Tuple[int, ...],
@@ -94,7 +94,7 @@ class BNMLPNetwork(_BaseMLPNetwork):
         return x
 
 
-class DDPGMLPNetwork(_BaseMLPNetwork):
+class DDPGMLPNetwork(BaseMLPNetwork):
     def __init__(self,
                  input_dim: Tuple[int, int],
                  hidden_dim: Tuple[int, int],
@@ -121,7 +121,7 @@ class DDPGMLPNetwork(_BaseMLPNetwork):
         return x
 
 
-class DDPGBNMLPNetwork(_BaseMLPNetwork):
+class DDPGBNMLPNetwork(BaseMLPNetwork):
     def __init__(self,
                  input_dim: Tuple[int, int],
                  hidden_dim: Tuple[int, int],

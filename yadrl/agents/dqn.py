@@ -1,7 +1,7 @@
 import random
 from copy import deepcopy
-from typing import Any
 from typing import NoReturn
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -9,8 +9,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 from yadrl.agents.base import BaseOffPolicy
-from yadrl.common.scheduler import LinearScheduler
-from yadrl.common.utils import huber_loss, quantile_hubber_loss
+from yadrl.common.scheduler import BaseScheduler
+from yadrl.common.utils import huber_loss
+from yadrl.common.utils import quantile_hubber_loss
 from yadrl.networks.models import CategoricalDQNModel
 from yadrl.networks.models import DQNModel
 from yadrl.networks.models import QuantileDQNModel
@@ -19,15 +20,12 @@ from yadrl.networks.models import QuantileDQNModel
 class DQN(BaseOffPolicy):
     def __init__(self,
                  phi: nn.Module,
-                 lrate: float,
+                 learning_rate: float,
                  grad_norm_value: float,
                  adam_eps: float,
-                 epsilon_annealing_steps: float,
-                 epsilon_min: float,
-                 v_min: float = -100.0,
-                 v_max: float = 100.0,
-                 atoms_dim: int = 51,
-                 quantiles_dim: int = 50,
+                 epsilon_scheduler: BaseScheduler = BaseScheduler(),
+                 v_limit: Tuple[float, float] = (-100.0, 100.0),
+                 support_dim: int = 51,
                  noise_type: str = 'none',
                  use_double_q: bool = False,
                  use_dueling: bool = False,
@@ -35,39 +33,34 @@ class DQN(BaseOffPolicy):
         super(DQN, self).__init__(agent_type='dqn', **kwargs)
         assert distribution_type in ('none', 'categorical', 'quantile')
 
-        self._atoms_dim = atoms_dim
-
         self._grad_norm_value = grad_norm_value
 
         self._use_double_q = use_double_q
         self._use_noise = noise_type != 'none'
         self._distribution_type = distribution_type
 
-        self._epsilon_scheduler = LinearScheduler(
-            start_value=1.0,
-            end_value=epsilon_min,
-            annealing_steps=epsilon_annealing_steps)
+        self._epsilon_scheduler = epsilon_scheduler
 
         if distribution_type == 'categorical':
             self._qv = CategoricalDQNModel(
                 phi=phi,
                 output_dim=self._action_dim,
-                atoms_dim=atoms_dim,
+                atoms_dim=support_dim,
                 dueling=use_dueling,
                 noise_type=noise_type).to(self._device)
-            self._v_limit = (v_min, v_max)
-            self._z_delta = (v_max - v_min) / (self._atoms_dim - 1)
-            self._atoms = torch.linspace(
-                v_min, v_max, atoms_dim, device=self._device).unsqueeze(0)
+            self._v_limit = v_limit
+            self._z_delta = (v_limit[1] - v_limit[0]) / (support_dim - 1)
+            self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
+                                         device=self._device).unsqueeze(0)
         elif distribution_type == 'quantile':
             self._qv = QuantileDQNModel(
                 phi=phi,
                 output_dim=self._action_dim,
-                quantiles_dim=quantiles_dim,
+                quantiles_dim=support_dim,
                 dueling=use_dueling,
                 noise_type=noise_type).to(self._device)
             self._cumulative_density = torch.from_numpy(
-                (np.arange(quantiles_dim) + 0.5) / quantiles_dim
+                (np.arange(support_dim) + 0.5) / support_dim
             ).float().unsqueeze(0).to(self._device)
         else:
             self._qv = DQNModel(
@@ -78,7 +71,8 @@ class DQN(BaseOffPolicy):
         self.load()
         self._target_qv = deepcopy(self._qv)
 
-        self._optim = optim.Adam(self._qv.parameters(), lr=lrate, eps=adam_eps)
+        self._optim = optim.Adam(self._qv.parameters(), lr=learning_rate,
+                                 eps=adam_eps)
 
     def _act(self, state: int, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
@@ -208,17 +202,19 @@ class DQN(BaseOffPolicy):
         model = self._checkpoint_manager.load()
         if model:
             self._qv.load_state_dict(model['model'])
+            self._target_qv.load_state_dict(model['target_model'])
             self._step = model['step']
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
 
-    def save(self, criterion_value: Any):
+    def save(self):
         state_dict = dict()
         state_dict['model'] = self._qv.state_dict()
+        state_dict['target_model'] = self._target_qv.state_dict()
         state_dict['step'] = self._step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        self._checkpoint_manager.save(state_dict, self._step, criterion_value)
+        torch.save(state_dict, 'model_{}.pth'.format(self._step))
 
     @property
     def parameters(self):

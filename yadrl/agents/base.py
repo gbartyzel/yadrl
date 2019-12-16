@@ -12,14 +12,13 @@ from gym.spaces.box import Box
 from torch.utils.tensorboard import SummaryWriter
 
 import yadrl.common.normalizer as normalizer
-from yadrl.common.checkpoint_manager import CheckpointManager
-from yadrl.common.memory import ReplayMemory, Rollout
+from yadrl.common.memory import ReplayMemory
+from yadrl.common.memory import Rollout
 
 
 class BaseOffPolicy(abc.ABC):
     def __init__(self,
                  env: gym.Env,
-                 agent_type: str,
                  discount_factor: float = 0.99,
                  n_step: int = 1,
                  memory_capacity: int = int(1e5),
@@ -48,7 +47,7 @@ class BaseOffPolicy(abc.ABC):
 
         self._use_state_normalization = use_state_normalization
 
-        self._state_dim = self._env.observation_space.shape[0]
+        self._state_dim = int(np.prod(self._env.observation_space.shape))
         if isinstance(self._env.action_space, Box):
             self._action_dim = self._env.action_space.shape[0]
             memory_action = self._action_dim
@@ -70,8 +69,6 @@ class BaseOffPolicy(abc.ABC):
 
         self._update_steps = update_steps
 
-        self._checkpoint_manager = CheckpointManager(agent_type, logdir)
-
         self._memory = ReplayMemory(
             capacity=memory_capacity,
             state_dim=self._state_dim,
@@ -91,7 +88,7 @@ class BaseOffPolicy(abc.ABC):
         else:
             self._state_normalizer = normalizer.DummyNormalizer()
 
-        self._writer = SummaryWriter()
+        self._writer = SummaryWriter(logdir)
 
     def step(self, train: bool):
         if train and self._memory.size < self._warm_up_steps:
@@ -203,9 +200,9 @@ class BaseOffPolicy(abc.ABC):
         return NotImplementedError
 
     @abc.abstractmethod
-    def load(self):
+    def load(self, path: str):
         return NotImplementedError
 
     @abc.abstractmethod
-    def save(self, criterion_value: Any):
+    def save(self):
         return NotImplementedError

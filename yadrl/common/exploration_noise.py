@@ -4,42 +4,18 @@ import numpy as np
 import torch
 
 
-class GaussianNoise(object):
+class GaussianNoise:
     TORCH_BACKEND = True
 
-    def __init__(self,
-                 dim: int,
-                 mean: float = 0.0,
-                 sigma: float = 1.0):
-        """
-
-        :param dim:
-        :param mean:
-        :param sigma:
-        """
-        self._dim = dim
-        self._mean = mean
-        self._sigma = sigma
-
-    def reset(self):
-        return
-
-    def __call__(self) -> Union[np.ndarray, torch.Tensor]:
-        if GaussianNoise.TORCH_BACKEND:
-            return torch.normal(mean=self._mean,
-                                std=torch.ones(self._dim) * self._sigma)
-        return np.random.normal(loc=self._mean, scale=self._sigma,
-                                size=self._dim)
-
-
-class AdaptiveGaussianNoise(GaussianNoise):
     def __init__(self,
                  dim: int,
                  mean: float = 0.0,
                  sigma: float = 1.0,
                  sigma_min: float = 0.0,
                  n_step_annealing: float = 1e6):
-        super(AdaptiveGaussianNoise, self).__init__(dim, mean, sigma)
+        self._dim = dim
+        self._mean = mean
+        self._sigma = sigma
 
         self._sigma_min = sigma_min
         if n_step_annealing == 0:
@@ -63,7 +39,7 @@ class AdaptiveGaussianNoise(GaussianNoise):
                                 size=self._dim)
 
 
-class OUNoise(AdaptiveGaussianNoise):
+class OUNoise(GaussianNoise):
     """
     Ornstein–Uhlenbeck process implementation
     https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process
