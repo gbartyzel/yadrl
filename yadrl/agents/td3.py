@@ -30,7 +30,7 @@ class TD3(BaseOffPolicy):
                  pi_grad_norm_value: float,
                  qvs_grad_norm_value: float,
                  **kwargs):
-        super(TD3, self).__init__(agent_type='td3', **kwargs)
+        super(TD3, self).__init__(**kwargs)
         GaussianNoise.TORCH_BACKEND = True
         if np.shape(action_limit) != (2,):
             raise ValueError

@@ -35,7 +35,7 @@ class DDPG(BaseOffPolicy):
                  theta: Optional[float] = 0.15,
                  dt: Optional[float] = 0.01,
                  **kwargs):
-        super(DDPG, self).__init__(agent_type='ddpg', **kwargs)
+        super(DDPG, self).__init__(**kwargs)
         if np.shape(action_limit) != (2,):
             raise ValueError
         self._action_limit = action_limit

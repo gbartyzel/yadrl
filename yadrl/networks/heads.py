@@ -156,19 +156,23 @@ class CategoricalPolicyHead(nn.Module):
         super(CategoricalPolicyHead, self).__init__()
         self._logits = nn.Linear(input_dim, output_dim)
 
+        self.reser_parameters()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.softmax(self._logits(x), dim=1)
-        return x
+        return self._logits(x)
+
+    def reser_parameters(self):
+        self._logits.weight.data.uniform_(-3e-3, 3e-3)
+        self._logits.bias.data.uniform_(-3e-3, 3e-3)
 
     def sample(self,
                x: torch.Tensor,
                action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
                                                                ...]:
         x = self.forward(x)
-        dist = Categorical(x)
-
+        dist = Categorical(logits=x)
         if not action:
             action = dist.sample()
         log_prob = dist.log_prob(action)
         entropy = dist.entropy()
-        return action, log_prob, entropy, x.argmax(-1, keepdim=True)
+        return action, log_prob, entropy, F.softmax(x).argmax(-1, keepdim=True)

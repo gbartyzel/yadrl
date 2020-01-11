@@ -30,7 +30,7 @@ class DQN(BaseOffPolicy):
                  use_double_q: bool = False,
                  use_dueling: bool = False,
                  distribution_type: str = 'none', **kwargs):
-        super(DQN, self).__init__(agent_type='dqn', **kwargs)
+        super(DQN, self).__init__(**kwargs)
         assert distribution_type in ('none', 'categorical', 'quantile')
 
         self._grad_norm_value = grad_norm_value
@@ -68,9 +68,7 @@ class DQN(BaseOffPolicy):
                 output_dim=self._action_dim,
                 dueling=use_dueling,
                 noise_type=noise_type).to(self._device)
-        self.load()
         self._target_qv = deepcopy(self._qv)
-
         self._optim = optim.Adam(self._qv.parameters(), lr=learning_rate,
                                  eps=adam_eps)
 
@@ -198,8 +196,8 @@ class DQN(BaseOffPolicy):
 
         return loss
 
-    def load(self) -> NoReturn:
-        model = self._checkpoint_manager.load()
+    def load(self, path: str) -> NoReturn:
+        model = torch.load(path)
         if model:
             self._qv.load_state_dict(model['model'])
             self._target_qv.load_state_dict(model['target_model'])
