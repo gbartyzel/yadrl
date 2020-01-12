@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
+from torch.distributions.relaxed_categorical import RelaxedOneHotCategorical
 from torch.distributions.multivariate_normal import MultivariateNormal
 
 from yadrl.networks.noisy_linear import FactorizedNoisyLinear
@@ -151,9 +152,9 @@ class GaussianPolicyHead(nn.Module):
             1.0 - torch.tanh(action).pow(2) + eps).sum(-1, keepdim=True)
 
 
-class CategoricalPolicyHead(nn.Module):
+class RelaxedCategoricalPolicyHead(nn.Module):
     def __init__(self, input_dim: int, output_dim: int):
-        super(CategoricalPolicyHead, self).__init__()
+        super(RelaxedCategoricalPolicyHead, self).__init__()
         self._logits = nn.Linear(input_dim, output_dim)
 
         self.reser_parameters()
@@ -167,12 +168,20 @@ class CategoricalPolicyHead(nn.Module):
 
     def sample(self,
                x: torch.Tensor,
-               action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
-                                                               ...]:
+               temperature: torch.Tensor = torch.Tensor([1.0]),
+               action: Optional[torch.Tensor] = None,
+               deterministic: bool = False) -> Tuple[torch.Tensor,...]:
         x = self.forward(x)
-        dist = Categorical(logits=x)
+        dist = RelaxedOneHotCategorical(temperature=temperature, logits=x)
         if not action:
-            action = dist.sample()
-        log_prob = dist.log_prob(action)
-        entropy = dist.entropy()
-        return action, log_prob, entropy, F.softmax(x).argmax(-1, keepdim=True)
+            raw_action = dist.rsample()
+        log_prob = dist.log_prob(raw_action).view(-1, 1)
+        action = F.one_hot(torch.argmax(raw_action, dim=-1),
+                           x.shape[-1]).float()
+        action = (action - raw_action).detach() + raw_action
+        return action, log_prob, F.softmax(x).argmax(dim=-1, keepdim=True)
+
+
+if __name__ == '__main__':
+    head = RelaxedCategoricalPolicyHead(256, 4)
+    print(head.sample(torch.rand(1, 256)))

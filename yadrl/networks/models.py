@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from yadrl.networks.heads import CategoricalPolicyHead
+from yadrl.networks.heads import RelaxedCategoricalPolicyHead
 from yadrl.networks.heads import DeterministicPolicyHead
 from yadrl.networks.heads import GaussianPolicyHead
 from yadrl.networks.heads import ValueHead
@@ -137,6 +137,27 @@ class QuantileDQNModel(DQNModel):
         return quants
 
 
+class DoubleDQN(nn.Module):
+    def __init__(self, phi: nn.Module, output_dim: int, dueling: bool = True):
+        super(DoubleDQN, self).__init__()
+        if isinstance(phi, tuple):
+            self._critic_1 = DQNModel(phi[0], output_dim, dueling)
+            self._critic_2 = DQNModel(phi[1], output_dim, dueling)
+        else:
+            self._critic_1 = DQNModel(phi, output_dim, dueling)
+            self._critic_2 = DQNModel(phi, output_dim, dueling)
+
+    def q1_parameters(self):
+        return self._critic_1.parameters()
+
+    def q2_parameters(self):
+        return self._critic_2.parameters()
+
+    def forward(self,
+                x: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
+        return self._critic_1(x), self._critic_2(x)
+
+
 class Critic(nn.Module):
     def __init__(self, phi: nn.Module):
         super(Critic, self).__init__()
@@ -237,13 +258,15 @@ class CategoricalActor(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int):
         super(CategoricalActor, self).__init__()
         self._phi = deepcopy(phi)
-        self._head = CategoricalPolicyHead(self._phi.output_dim, output_dim)
+        self._head = RelaxedCategoricalPolicyHead(self._phi.output_dim,
+                                                  output_dim)
 
     def forward(self,
                 x: torch.Tensor,
+                temperature: torch.Tensor = torch.Tensor([1.0]),
                 action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
                                                                 ...]:
-        return self._head.sample(self._phi(x), action)
+        return self._head.sample(self._phi(x), temperature, action)
 
 
 class CategoricalActorCritic(nn.Module):
@@ -251,7 +274,7 @@ class CategoricalActorCritic(nn.Module):
         super(CategoricalActorCritic, self).__init__()
         self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
-        self._policy = CategoricalPolicyHead(
+        self._policy = RelaxedCategoricalPolicyHead(
             input_dim=self._phi.output_dim,
             output_dim=output_dim)
 

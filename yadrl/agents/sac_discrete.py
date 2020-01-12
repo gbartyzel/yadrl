@@ -9,7 +9,7 @@ import torch.optim as optim
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks.models import CategoricalActor, DoubleCritic
+from yadrl.networks.models import CategoricalActor, DoubleCritic, DoubleDQN
 
 
 class SACDiscrete(BaseOffPolicy):
@@ -33,14 +33,14 @@ class SACDiscrete(BaseOffPolicy):
             pi_phi, self._action_dim).to(self._device)
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
-        self._qv = DoubleCritic(qvs_phi).to(self._device)
-        self._target_qv = DoubleCritic(qvs_phi).to(self._device)
+        self._qv = DoubleDQN(qvs_phi, self._action_dim).to(self._device)
+        self._target_qv = DoubleDQN(qvs_phi, self._action_dim).to(self._device)
         self._qv_1_optim = optim.Adam(self._qv.q1_parameters(), qvs_lrate)
         self._qv_2_optim = optim.Adam(self._qv.q2_parameters(), qvs_lrate)
 
         self._alpha_tuning = alpha_tuning
         if alpha_tuning:
-            self._target_entropy = -np.prod(self._action_dim)
+            self._target_entropy = -self._action_dim
             self._log_alpha = torch.zeros(
                 1, requires_grad=True, device=self._device)
             self._alpha_optim = optim.Adam([self._log_alpha], lr=alpha_lrate)
@@ -53,9 +53,9 @@ class SACDiscrete(BaseOffPolicy):
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
         self._pi.eval()
         with torch.no_grad():
-            action = self._pi(state)[0]
+            action = self._pi(state)[0].argmax()
         self._pi.train()
-        return action[0].cpu().numpy()
+        return action.cpu().numpy()
 
     def _update(self):
         batch = self._memory.sample(self._batch_size, self._device)
@@ -66,22 +66,24 @@ class SACDiscrete(BaseOffPolicy):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        next_action, log_prob, _, _ = self._pi(next_state)
-        target_next_q = torch.min(*self._target_qv(
-            next_state, self._make_one_hot(next_action)))
+        next_action, log_prob, _ = self._pi(next_state)
+        target_next_qs = self._target_qv(next_state)
+        target_next_q = torch.min(
+            (target_next_qs[0] * next_action).sum(-1, True),
+            (target_next_qs[1] * next_action).sum(-1, True))
         target_next_v = target_next_q - self._alpha * log_prob
         target_q = self._td_target(batch.reward, batch.mask,
                                    target_next_v).detach()
 
-        expected_q1, expected_q2 = self._qv(state,
-                                            self._make_one_hot(batch.action))
+        expected_q1, expected_q2 = self._qv(state)
 
-        q1_loss = mse_loss(expected_q1, target_q)
-        q2_loss = mse_loss(expected_q2, target_q)
+        q1_loss = mse_loss(expected_q1.gather(1, batch.action.long()), target_q)
+        q2_loss = mse_loss(expected_q2.gather(1, batch.action.long()), target_q)
 
-        action, log_prob, _, _ = self._pi(state)
-        target_log_prob = torch.min(*self._qv(state,
-                                              self._make_one_hot(action)))
+        action, log_prob, _ = self._pi(state)
+        qs = self._qv(state)
+        target_log_prob = torch.min((qs[0] * action).sum(-1, True),
+                                    (qs[1] * action).sum(-1, True))
         policy_loss = torch.mean(self._alpha * log_prob - target_log_prob)
 
         if self._alpha_tuning:
@@ -91,13 +93,6 @@ class SACDiscrete(BaseOffPolicy):
             alpha_loss = 0.0
 
         return q1_loss, q2_loss, policy_loss, alpha_loss
-
-    def _make_one_hot(self, value):
-        x = value.long().view(-1, 1)
-        one_hot = torch.FloatTensor(self._batch_size, self._action_dim)
-        one_hot.zero_()
-        one_hot.scatter_(1, x, 1)
-        return one_hot
 
     def _update_parameters(self, q1_loss, q2_loss, policy_loss, alpha_loss):
         self._qv_1_optim.zero_grad()
@@ -127,6 +122,8 @@ class SACDiscrete(BaseOffPolicy):
             self._alpha_optim.step()
 
             self._alpha = torch.exp(self._log_alpha)
+
+        self._data_to_log['alpha'] = self._alpha
 
     def load(self, path: str) -> NoReturn:
         model = torch.load(path)

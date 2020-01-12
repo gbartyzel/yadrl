@@ -41,6 +41,7 @@ class BaseOffPolicy(abc.ABC):
         self._step = 0
         self._update_step = 0
         self._set_seeds(seed)
+        self._data_to_log = dict()
 
         self._device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
@@ -95,7 +96,7 @@ class BaseOffPolicy(abc.ABC):
             action = self._env.action_space.sample()
         else:
             action = self._act(self._state, train)
-        next_state, reward, done, _ = self._env.step(action)
+        next_state, reward, done, _ = self._env.step(int(action))
         self._observe(self._state, action, reward, next_state, done)
         self._state = next_state
         return reward, done
@@ -174,6 +175,8 @@ class BaseOffPolicy(abc.ABC):
 
     def _log(self, reward):
         self._writer.add_scalar('reward', reward, self._step)
+        for k, v in self._data_to_log.items():
+            self._writer.add_scalar(k, v, self._step)
         for name, param in self.parameters:
             self._writer.add_histogram(
                 'main/{}'.format(name), param, self._step)
