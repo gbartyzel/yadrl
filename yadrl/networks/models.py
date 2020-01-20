@@ -159,44 +159,38 @@ class DoubleDQN(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, phi: nn.Module):
-        super(Critic, self).__init__()
-        self._phi = deepcopy(phi)
-        self._value = ValueHead(self._phi.output_dim)
-
-    def forward(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        return self._value(self._phi(x))
-
-
-class DistributionalCritic(nn.Module):
     def __init__(self,
                  phi: nn.Module,
-                 distribution_type: str,
-                 support_dim: int):
-        super(DistributionalCritic, self).__init__()
-        assert distribution_type in ('categorical', 'quantile')
-
+                 distribution_type: str = 'none',
+                 support_dim: int = 1):
+        super(Critic, self).__init__()
+        assert distribution_type in ('categorical', 'quantile', 'none')
+        if distribution_type == 'none':
+            support_dim = 1
         self._phi = deepcopy(phi)
-        self._dist = ValueHead(self._phi.output_dim, support_dim)
+        self._value = ValueHead(self._phi.output_dim, support_dim)
         self._support_dim = support_dim
         self._distribution_type = distribution_type
 
-    def forward(self, *x):
-        probs = self._dist(x).view(-1, 1, self._support_dim)
-        if self._distribution_type == 'categorical':
-            return F.softmax(probs, dim=-1)
-        return probs
+    def forward(self, *x: Tuple[torch.Tensor, ...]) -> torch.Tensor:
+        output = self._value(self._phi(x))
+        if self._distribution_type == 'none':
+            return output
+        else:
+            probs = output.view(-1, self._support_dim)
+            if self._distribution_type == 'categorical':
+                return F.softmax(probs, dim=-1)
+            return probs
 
 
 class DoubleCritic(nn.Module):
-    def __init__(self, phi: Union[Tuple[nn.Module, nn.Module], nn.Module]):
+    def __init__(self,
+                 phi: nn.Module,
+                 distribution_type: str = 'none',
+                 support_dim: int = 1):
         super(DoubleCritic, self).__init__()
-        if isinstance(phi, tuple):
-            self._critic_1 = Critic(phi[0])
-            self._critic_2 = Critic(phi[1])
-        else:
-            self._critic_1 = Critic(phi)
-            self._critic_2 = Critic(phi)
+        self._critic_1 = Critic(phi, distribution_type, support_dim)
+        self._critic_2 = Critic(phi, distribution_type, support_dim)
 
     def q1_parameters(self):
         return self._critic_1.parameters()
@@ -315,3 +309,9 @@ class GaussianActorCritic(nn.Module):
         value = self._value(x)
         action, log_prob, entropy = self._policy.sample(x, action)
         return action, log_prob, entropy, value
+
+if __name__ == '__main__':
+    import yadrl.networks.bodies as b
+    head = DistributionalCritic(
+        b.MLPNetwork(14, (128, 128)), 'categorical', 51)
+    print(head(torch.rand(1, 14)).shape)

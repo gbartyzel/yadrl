@@ -8,10 +8,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.scheduler import BaseScheduler
-from yadrl.common.utils import huber_loss
-from yadrl.common.utils import quantile_hubber_loss
 from yadrl.networks.models import CategoricalDQNModel
 from yadrl.networks.models import DQNModel
 from yadrl.networks.models import QuantileDQNModel
@@ -49,7 +48,6 @@ class DQN(BaseOffPolicy):
                 dueling=use_dueling,
                 noise_type=noise_type).to(self._device)
             self._v_limit = v_limit
-            self._z_delta = (v_limit[1] - v_limit[0]) / (support_dim - 1)
             self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
                                          device=self._device).unsqueeze(0)
         elif distribution_type == 'quantile':
@@ -122,9 +120,12 @@ class DQN(BaseOffPolicy):
             else:
                 target_next_q = target_next_q.max(1)[0].view(-1, 1)
 
-            target_q = self._td_target(batch.reward, batch.mask, target_next_q)
+            target_q = utils.td_target(reward=batch.reward,
+                                       mask=batch.mask,
+                                       next_value=target_next_q,
+                                       discount=self._discount)
         expected_q = self._qv(state, True).gather(1, batch.action.long())
-        loss = huber_loss(expected_q, target_q)
+        loss = utils.huber_loss(expected_q, target_q)
 
         return loss
 
@@ -145,22 +146,12 @@ class DQN(BaseOffPolicy):
             next_action = next_q.argmax(-1).long()
 
             next_probs = next_probs[batch_vec, next_action, :]
-            target_probs = torch.zeros(next_probs.shape, device=self._device)
-
-            next_atoms = self._td_target(batch.reward, batch.mask, self._atoms)
-            next_atoms = torch.clamp(next_atoms, *self._v_limit)
-
-            bj = (next_atoms - self._v_limit[0]) / self._z_delta
-            l = bj.floor()
-            u = bj.ceil()
-
-            delta_l_prob = next_probs * (u + (u == l).float() - bj)
-            delta_u_prob = next_probs * (bj - l)
-
-            for i in range(self._batch_size):
-                target_probs[i].index_add_(0, l[i].long(), delta_l_prob[i])
-                target_probs[i].index_add_(0, u[i].long(), delta_u_prob[i])
-
+            target_probs = utils.l2_projection(next_probs=next_probs,
+                                               reward=batch.reward,
+                                               mask=batch.mask,
+                                               atoms=self._atoms,
+                                               v_limit=self._v_limit,
+                                               discount=self._discount)
         action = batch.action.squeeze().long()
         probs = self._qv(state, True)[batch_vec, action, :]
         probs = torch.clamp(probs, 1e-7, 1.0)
@@ -189,7 +180,7 @@ class DQN(BaseOffPolicy):
         expected_quantiles = self._qv(state, True)
         expected_quantiles = expected_quantiles[batch_vec, action, :]
 
-        loss = quantile_hubber_loss(
+        loss = utils.quantile_hubber_loss(
             prediction=expected_quantiles,
             target=target_quantiles,
             cumulative_density=self._cumulative_density)

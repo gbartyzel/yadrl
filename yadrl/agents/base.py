@@ -96,7 +96,7 @@ class BaseOffPolicy(abc.ABC):
             action = self._env.action_space.sample()
         else:
             action = self._act(self._state, train)
-        next_state, reward, done, _ = self._env.step(int(action))
+        next_state, reward, done, _ = self._env.step(action)
         self._observe(self._state, action, reward, next_state, done)
         self._state = next_state
         return reward, done

@@ -1,3 +1,4 @@
+from typing import Tuple
 from enum import Enum
 
 import torch
@@ -52,3 +53,36 @@ def quantile_hubber_loss(prediction: torch.Tensor,
     elif reduction == Reduction.SUM:
         return torch.sum(loss)
     return loss
+
+
+def td_target(reward: torch.Tensor,
+              mask: torch.Tensor,
+              next_value: torch.Tensor,
+              discount: float = 0.99) -> torch.Tensor:
+    return reward + mask * discount * next_value
+
+
+def l2_projection(next_probs: torch.Tensor,
+                  reward: torch.Tensor,
+                  mask: torch.Tensor,
+                  atoms: torch.Tensor,
+                  v_limit: Tuple[float, float],
+                  discount: float) -> torch.Tensor:
+    target_probs = torch.zeros(next_probs.shape, device=next_probs.device)
+
+    next_atoms = td_target(reward, mask, atoms, discount)
+    next_atoms = torch.clamp(next_atoms, *v_limit)
+
+    z_delta = (v_limit[1] - v_limit[0]) / (atoms.shape[-1] - 1)
+    bj = (next_atoms - v_limit[0]) / z_delta
+    l = bj.floor()
+    u = bj.ceil()
+
+    delta_l_prob = next_probs * (u + (u == l).float() - bj)
+    delta_u_prob = next_probs * (bj - l)
+
+    for i in range(next_probs.shape[0]):
+        target_probs[i].index_add_(0, l[i].long(), delta_l_prob[i])
+        target_probs[i].index_add_(0, u[i].long(), delta_u_prob[i])
+
+    return target_probs
