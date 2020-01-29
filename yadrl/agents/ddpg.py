@@ -10,11 +10,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import yadrl.common.exploration_noise as noise
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
 from yadrl.networks.models import Critic, DoubleCritic
 from yadrl.networks.models import DeterministicActor
+from yadrl.common.exploration_noise import GaussianNoise
 import yadrl.common.utils as utils
 
 
@@ -25,28 +25,29 @@ class DDPG(BaseOffPolicy):
                  pi_lrate: float,
                  qv_lrate: float,
                  action_limit: Union[Sequence[float], np.ndarray],
+                 noise: GaussianNoise,
+                 noise_scale_factor: 1.0,
                  l2_reg_value: float = 0.0,
                  pi_grad_norm_value: float = 0.0,
                  qv_grad_norm_value: float = 0.0,
-                 twin_critic: bool = False,
                  distribution_type: str = 'quantile',
                  support_dim: int = 100,
                  v_limit: Tuple[float, float] = (-200.0, 200.0),
-                 noise_type: Optional[str] = "ou",
-                 mean: Optional[float] = 0.0,
-                 sigma: Optional[float] = 0.2,
-                 sigma_min: Optional[float] = 0.01,
-                 n_step_annealing: Optional[float] = 1e5,
-                 theta: Optional[float] = 0.15,
-                 dt: Optional[float] = 0.01,
+                 twin_critic: bool = False,
+                 policy_update_frequency: int = 1,
+                 target_noise_limit: Union[Sequence[float],
+                                           np.ndarray] = (-0.5, 0.5),
+                 target_noise_std: float = 0.2,
                  **kwargs):
         super(DDPG, self).__init__(**kwargs)
-        if np.shape(action_limit) != (2,):
-            raise ValueError
+        assert np.shape(action_limit) != (2,), "Wrong action limit!"
         self._action_limit = action_limit
         self._distribution_type = distribution_type
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qv_grad_norm_value = qv_grad_norm_value
+
+        self._twin_critic = twin_critic
+        self._policy_update_frequency = policy_update_frequency
 
         self._pi = DeterministicActor(
             phi=pi_phi,
@@ -77,8 +78,13 @@ class DDPG(BaseOffPolicy):
         self._target_pi.load_state_dict(self._pi.state_dict())
         self._target_qv.load_state_dict(self._qv.state_dict())
 
-        self._noise = self._get_noise(noise_type, mean, sigma, sigma_min,
-                                      theta, n_step_annealing, dt)
+        self._noise = noise
+        self._noise_scale_factor = noise_scale_factor
+        if twin_critic:
+            self._target_noise = GaussianNoise(dim=self._action_dim,
+                                               sigma=target_noise_std,
+                                               n_step_annealing=0)
+            self._target_noise_limit = target_noise_limit
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
@@ -97,17 +103,19 @@ class DDPG(BaseOffPolicy):
         self._noise.reset()
 
     def _update(self):
-        batch = self._memory.sample(self._batch_size, self._device)
+        batch = self._memory.sample(self._batch_size)
         self._update_critic(batch)
-        self._update_actor(batch)
 
-        self._update_target(self._pi, self._target_pi)
-        self._update_target(self._qv, self._target_qv)
+        if self._env_step % (self._policy_update_frequency *
+                             self._update_frequency) == 0:
+            self._update_actor(batch)
+            self._update_target(self._pi, self._target_pi)
+            self._update_target(self._qv, self._target_qv)
 
     def _update_critic(self, batch: Batch):
         next_state = self._state_normalizer(batch.next_state, self._device)
         with torch.no_grad():
-            next_action = self._target_pi(next_state)
+            next_action = self._sample_target_action(next_state)
             next_critic_output = self._target_qv(next_state, next_action)
 
         if self._distribution_type == 'categorical':
@@ -122,12 +130,22 @@ class DDPG(BaseOffPolicy):
             nn.utils.clip_grad_norm_(self._qv.parameters(),
                                      self._qv_grad_norm_value)
         self._qv_optim.step()
-        self._writer.add_scalar('loss/qv', loss.item(), self._step)
+        self._writer.add_scalar('loss/qv', loss.item(), self._env_step)
+
+    def _sample_target_action(self, next_state: torch.Tensor) -> torch.Tensor:
+        target_action = self._target_pi(next_state)
+        if self._twin_critic:
+            noise = self._target_noise().clamp(
+                *self._target_noise_limit).to(self._device)
+            return torch.clamp(target_action + noise, *self._action_limit)
+        return target_action
 
     def _compute_td_loss(self,
                          batch: Batch,
                          target_next_q: torch.Tensor) -> torch.Tensor:
         state = self._state_normalizer(batch.state, self._device)
+        if self._twin_critic:
+            target_next_q = torch.min(*target_next_q).view(-1, 1)
         target_q = utils.td_target(
             reward=batch.reward,
             mask=batch.mask,
@@ -135,13 +153,16 @@ class DDPG(BaseOffPolicy):
             discount=self._discount).detach()
         expected_q = self._qv(state, batch.action)
 
-        loss = utils.mse_loss(expected_q, target_q)
-        return loss
+        if self._twin_critic:
+            return torch.add(*[utils.mse_loss(q, target_q) for q in expected_q])
+        return utils.mse_loss(expected_q, target_q)
 
     def _compute_categorical_loss(self,
                                   batch: Batch,
                                   next_probs: torch.Tensor) -> torch.Tensor:
         state = self._state_normalizer(batch.state, self._device)
+        if self._twin_critic:
+            pass
         target_probs = utils.l2_projection(
             next_probs=next_probs,
             reward=batch.reward,
@@ -187,7 +208,7 @@ class DDPG(BaseOffPolicy):
             nn.utils.clip_grad_norm_(self._pi.parameters(),
                                      self._pi_grad_norm_value)
         self._pi_optim.step()
-        self._writer.add_scalar('loss/pi', loss.item(), self._step)
+        self._writer.add_scalar('loss/pi', loss.item(), self._env_step)
 
     def load(self, path: str) -> NoReturn:
         model = torch.load(path)
@@ -195,7 +216,7 @@ class DDPG(BaseOffPolicy):
             self._pi.load_state_dict(model['actor'])
             self._qv.load_state_dict(model['critic'])
             self._target_qv.load_state_dict(model['target_critic'])
-            self._step = model['step']
+            self._env_step = model['step']
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
 
@@ -204,29 +225,10 @@ class DDPG(BaseOffPolicy):
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qv.state_dict()
         state_dict['target_critic'] = self._target_qv.state_dict()
-        state_dict['step'] = self._step
+        state_dict['step'] = self._env_step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        torch.save(state_dict, 'model_{}.pth'.format(self._step))
-
-    def _get_noise(self, noise_type: str,
-                   mean: float,
-                   sigma: float,
-                   sigma_min: float,
-                   theta: float,
-                   n_step_annealing: float,
-                   dt: float) -> noise.GaussianNoise:
-
-        if noise_type == "gaussian":
-            return noise.GaussianNoise(
-                self._action_dim, mean=mean, sigma=sigma, sigma_min=sigma_min,
-                n_step_annealing=n_step_annealing)
-        elif noise_type == "ou":
-            return noise.OUNoise(
-                self._action_dim, mean=mean, theta=theta, sigma=sigma,
-                sigma_min=sigma_min, n_step_annealing=n_step_annealing, dt=dt)
-        else:
-            raise ValueError
+        torch.save(state_dict, 'model_{}.pth'.format(self._env_step))
 
     @property
     def parameters(self):

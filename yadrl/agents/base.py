@@ -38,8 +38,8 @@ class BaseOffPolicy(abc.ABC):
         super(BaseOffPolicy, self).__init__()
         self._env = env
         self._state = None
-        self._step = 0
-        self._update_step = 0
+        self._env_step = 0
+        self._optimizer_step = 0
         self._set_seeds(seed)
         self._data_to_log = dict()
 
@@ -51,10 +51,8 @@ class BaseOffPolicy(abc.ABC):
         self._state_dim = int(np.prod(self._env.observation_space.shape))
         if isinstance(self._env.action_space, Box):
             self._action_dim = self._env.action_space.shape[0]
-            memory_action = self._action_dim
         else:
             self._action_dim = self._env.action_space.n
-            memory_action = 1
 
         self._discount = discount_factor ** n_step
         self._n_step = n_step
@@ -72,16 +70,10 @@ class BaseOffPolicy(abc.ABC):
 
         self._memory = ReplayMemory(
             capacity=memory_capacity,
-            state_dim=self._state_dim,
-            action_dim=memory_action,
             combined=use_combined_experience_replay,
             torch_backend=True)
 
-        self._rollout = Rollout(
-            capacity=n_step,
-            state_dim=self._state_dim,
-            action_dim=memory_action,
-            discount_factor=discount_factor)
+        self._rollout = Rollout(length=n_step, discount_factor=discount_factor)
 
         if use_state_normalization:
             self._state_normalizer = normalizer.RMSNormalizer(
@@ -105,13 +97,13 @@ class BaseOffPolicy(abc.ABC):
         self._state = self._env.reset()
         total_reward = []
         pb = tqdm.tqdm(total=max_steps)
-        while self._step < max_steps:
+        while self._env_step < max_steps:
             reward, done = self.step(True)
             total_reward.append(reward)
             pb.update(1)
             if done:
                 self._state = self._env.reset()
-                if self._step > 0:
+                if self._env_step > 0:
                     self._log(sum(total_reward))
                 total_reward = []
         pb.close()
@@ -138,10 +130,10 @@ class BaseOffPolicy(abc.ABC):
             return
         self._memory.push(*transition)
         if self._memory.size >= self._warm_up_steps:
-            self._step += 1
-            if self._step % self._update_frequency == 0:
+            self._env_step += 1
+            if self._env_step % self._update_frequency == 0:
                 for _ in range(self._update_steps):
-                    self._update_step += 1
+                    self._optimizer_step += 1
                     self._update()
         if done:
             self._rollout.reset()
@@ -150,7 +142,7 @@ class BaseOffPolicy(abc.ABC):
         if self._use_soft_update:
             self._soft_update(model.parameters(), target_model.parameters())
         else:
-            if self._update_step % self._target_update_frequency == 0:
+            if self._optimizer_step % self._target_update_frequency == 0:
                 target_model.load_state_dict(model.state_dict())
 
     def _soft_update(self, params: nn.parameter, target_params: nn.parameter):
@@ -174,15 +166,15 @@ class BaseOffPolicy(abc.ABC):
         np.random.seed(seed)
 
     def _log(self, reward):
-        self._writer.add_scalar('reward', reward, self._step)
+        self._writer.add_scalar('reward', reward, self._env_step)
         for k, v in self._data_to_log.items():
-            self._writer.add_scalar(k, v, self._step)
+            self._writer.add_scalar(k, v, self._env_step)
         for name, param in self.parameters:
             self._writer.add_histogram(
-                'main/{}'.format(name), param, self._step)
+                'main/{}'.format(name), param, self._env_step)
         for name, param in self.target_parameters:
             self._writer.add_histogram(
-                'target/{}'.format(name), param, self._step)
+                'target/{}'.format(name), param, self._env_step)
 
     @property
     @abc.abstractmethod

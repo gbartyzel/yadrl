@@ -1,194 +1,118 @@
-from collections import namedtuple
-from typing import Any
-from typing import Sequence
+from collections import namedtuple, deque
+from typing import Dict
+from typing import List
 from typing import Tuple
 from typing import Union
 
 import numpy as np
 import torch
 
-_DATA = Union[np.ndarray, torch.Tensor]
-
 Batch = namedtuple('Batch', 'state action reward next_state mask')
-
-
-class RingBuffer:
-    TORCH_BACKEND = False
-
-    def __init__(self, capacity: int, dimension: Union[int, Sequence[int]]):
-        self._size = 0
-        self._capacity = capacity
-        self._dimension = self._to_tuple(dimension)
-        self._container = np.zeros((capacity,) + self._dimension)
-
-    def add(self, value: Any):
-        self._container[self._size, :] = value
-        self._size = (self._size + 1) % self._capacity
-
-    def sample(self,
-               idx: Union[Sequence[int], torch.Tensor],
-               device: torch.device = torch.device('cpu')) -> _DATA:
-        batch = self._container[idx]
-        if RingBuffer.TORCH_BACKEND:
-            return torch.from_numpy(batch).float().to(device)
-        return batch
-
-    def reset(self):
-        self._container = np.zeros((self._capacity,) + self._dimension)
-
-    @property
-    def size(self) -> int:
-        return self._size
-
-    @property
-    def first(self) -> _DATA:
-        return self._container[0]
-
-    @property
-    def end(self) -> _DATA:
-        return self._container[-1]
-
-    @property
-    def data(self) -> _DATA:
-        return self._container
-
-    @staticmethod
-    def _to_tuple(value: Union[int, Sequence[int]]) -> Tuple[int, ...]:
-        if isinstance(value, int):
-            return value,
-        return tuple(value)
-
-    def __str__(self) -> str:
-        return np.array2string(self._container)
-
-    def __getitem__(self, item: int) -> np.ndarray:
-        return self._container[item]
+_TRANSITION = Tuple[np.ndarray, np.ndarray, np.ndarray, float, bool]
 
 
 class ReplayMemory(object):
     def __init__(self,
                  capacity: int,
-                 state_dim: Union[int, Sequence[int]],
-                 action_dim: Union[int, Sequence[int]],
                  combined: bool = False,
-                 torch_backend: bool = False):
-        RingBuffer.TORCH_BACKEND = torch_backend
-        self._capacity = capacity
+                 torch_backend: bool = False,
+                 device: torch.device = torch.device('cpu')):
         self._combined = combined
-        self._size = 0
-
-        self._state_buffer = RingBuffer(capacity, state_dim)
-        self._action_buffer = RingBuffer(capacity, action_dim)
-        self._reward_buffer = RingBuffer(capacity, 1)
-        self._next_state_buffer = RingBuffer(capacity, state_dim)
-        self._mask_buffer = RingBuffer(capacity, 1)
+        self._buffer = deque(maxlen=capacity)
+        self._torch_backend = torch_backend
+        self._device = device
 
     def push(self,
-             state: _DATA,
-             action: _DATA,
-             reward: Union[float, torch.Tensor],
-             next_state: Union[float, torch.Tensor],
-             terminal: Union[float, bool, torch.Tensor]):
-        self._size = min(self._size + 1, self._capacity)
-        self._state_buffer.add(state)
-        self._action_buffer.add(action)
-        self._reward_buffer.add(reward)
-        self._next_state_buffer.add(next_state)
-        self._mask_buffer.add(1.0 - terminal)
+             state: np.ndarray,
+             action: Union[np.ndarray, int, float],
+             reward: Union[np.ndarray, float],
+             next_state: np.ndarray,
+             terminal: Union[np.ndarray, float, bool]):
+        self._buffer.append((state, action, reward, next_state, 1.0 - terminal))
 
-    def sample(self,
-               batch_size: int,
-               device: torch.device = torch.device('cpu')) -> Batch:
+    def sample(self, batch_size: int) -> Batch:
         if self._combined:
             batch_size -= 1
         idxs = np.random.randint((self.size - 1), size=batch_size)
         if self._combined:
             idxs = np.append(idxs, np.array(self.size - 1, dtype=np.int32))
-        batch = Batch(
-            state=self._state_buffer.sample(idxs, device),
-            action=self._action_buffer.sample(idxs, device),
-            reward=self._reward_buffer.sample(idxs, device),
-            next_state=self._next_state_buffer.sample(idxs, device),
-            mask=self._mask_buffer.sample(idxs, device))
 
+        return self._encode_batch(idxs)
+
+    def _encode_batch(self, idxs: np.ndarray) -> Batch:
+        state, action, reward, next_state, mask = [], [], [], [], []
+        for idx in idxs:
+            transition = self._buffer[idx]
+            state.append(np.array(transition[0]))
+            action.append(np.array(transition[1]))
+            reward.append(np.array(transition[2]))
+            next_state.append(np.array(transition[3]))
+            mask.append(np.array(transition[4]))
+
+        return Batch(state=self._to_torch(state),
+                     action=self._to_torch(action),
+                     reward=self._to_torch(reward),
+                     next_state=self._to_torch(next_state),
+                     mask=self._to_torch(mask))
+
+    def _to_torch(self,
+                  batch: List[np.ndarray]) -> Union[np.ndarray, torch.Tensor]:
+        batch = np.array(batch)
+        if len(batch.shape) == 1:
+            batch = batch.reshape((-1, 1))
+        if self._torch_backend:
+            return torch.from_numpy(batch).to(self._device).float()
         return batch
 
     @property
     def size(self) -> int:
-        return self._size
+        return len(self._buffer)
 
     def __getitem__(self, item: int) -> Tuple[np.ndarray, ...]:
-        state = self._state_buffer[item]
-        action = self._action_buffer[item]
-        reward = self._reward_buffer[item]
-        next_state = self._next_state_buffer[item]
-        terminal = self._mask_buffer[item]
-        return state, action, reward, next_state, terminal
+        state, action, reward, next_state, mask = self._buffer[item]
+        return state, action, reward, next_state, mask
 
 
 class Rollout:
-    def __init__(self,
-                 capacity: int,
-                 state_dim: int,
-                 action_dim: int,
-                 discount_factor: float):
-        self._size = 0
-        self._capacity = capacity
+    def __init__(self, length: int, discount_factor: float):
         self._discount_factor = discount_factor
-
-        self._state_buffer = np.zeros((capacity, state_dim))
-        self._action_buffer = np.zeros((capacity, action_dim))
-        self._reward_buffer = np.zeros((capacity, 1))
+        self._buffer = deque(maxlen=length)
 
     @property
-    def ready(self):
-        return self._size == self._capacity
+    def ready(self) -> int:
+        return len(self._buffer) == self._buffer.maxlen
 
-    def push(self,
-             state: _DATA,
-             action: _DATA,
-             reward: Union[float, torch.Tensor]):
-        self._state_buffer = self._add(self._state_buffer, state)
-        self._action_buffer = self._add(self._action_buffer, action)
-        self._reward_buffer = self._add(self._reward_buffer, reward)
-        self._size = min(self._size + 1, self._capacity)
-
-    def get_transition(self, state, action, reward, next_state, done):
-        self.push(state, action, reward)
-        if self._size == self._capacity:
+    def get_transition(self,
+                       state: np.ndarray,
+                       action: np.ndarray,
+                       reward: Union[np.ndarray, float],
+                       next_state: np.ndarray,
+                       done: Union[np.ndarray, bool]) -> _TRANSITION:
+        self._buffer.append((state, action, reward))
+        if self.ready:
             cum_reward = self._compute_cumulative_reward()
-            state = self._state_buffer[0]
-            action = self._action_buffer[0]
-            return state, action, cum_reward, next_state, done
+            return (self._buffer[0][0], self._buffer[0][1], cum_reward,
+                    next_state, done)
         return None
 
     def reset(self):
-        self._state_buffer = np.zeros(self._state_buffer.shape)
-        self._action_buffer = np.zeros(self._action_buffer.shape)
-        self._reward_buffer = np.zeros(self._reward_buffer.shape)
-        self._size = 0
+        self._buffer.clear()
 
-    def _compute_cumulative_reward(self):
+    def _compute_cumulative_reward(self) -> float:
         cum_reward = 0
-        for t in range(self._capacity):
-            cum_reward += self._discount_factor ** t * self._reward_buffer[t]
+        for t in range(self._buffer.maxlen):
+            cum_reward += self._discount_factor ** t * self._buffer[t][2]
         return cum_reward
-
-    @staticmethod
-    def _add(buffer: np.ndarray, value: Any) -> np.ndarray:
-        buffer = np.roll(buffer, -1, 0)
-        buffer[-1] = value
-        return buffer
 
 
 if __name__ == '__main__':
-    mem = ReplayMemory(100, 3, 2)
-
-    for i in range(102):
-        state = np.ones(3) * i
-        action = np.ones(2) * (i * 2)
-        rewrd = np.sqrt(i)
-        next_state = np.ones(3) * (i + 1)
-        mem.push(state, action, rewrd, next_state, False)
-
-    print(mem[1])
+    rollout = Rollout(5, 0.99)
+    for i in range(5):
+        state = np.random.rand(1, 4)
+        action = np.random.rand(2)
+        reward = 1
+        next_state = np.random.rand(1, 4)
+        mask = False
+        tran = rollout.get_transition(state, action, reward, next_state, mask)
+        if tran is not None:
+            print(tran[2])

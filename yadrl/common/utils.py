@@ -69,7 +69,6 @@ def l2_projection(next_probs: torch.Tensor,
                   v_limit: Tuple[float, float],
                   discount: float) -> torch.Tensor:
     target_probs = torch.zeros(next_probs.shape, device=next_probs.device)
-
     next_atoms = td_target(reward, mask, atoms, discount)
     next_atoms = torch.clamp(next_atoms, *v_limit)
 
