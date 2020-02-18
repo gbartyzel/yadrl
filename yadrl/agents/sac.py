@@ -1,4 +1,3 @@
-import copy
 from typing import NoReturn
 
 import numpy as np
@@ -34,7 +33,7 @@ class SAC(BaseOffPolicy):
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
         self._qv = DoubleCritic(qv_phi).to(self._device)
-        self._target_qv = copy.deepcopy(self._qv).to(self._device)
+        self._target_qv = DoubleCritic(qv_phi).to(self._device)
         self._qv_1_optim = optim.Adam(self._qv.q1_parameters(), qv_lrate)
         self._qv_2_optim = optim.Adam(self._qv.q2_parameters(), qv_lrate)
         self._target_qv.load_state_dict(self._qv.state_dict())
@@ -59,7 +58,7 @@ class SAC(BaseOffPolicy):
         return action[0].cpu().numpy()
 
     def _update(self):
-        batch = self._memory.sample(self._batch_size, self._device)
+        batch = self._memory.sample(self._batch_size)
         self._update_parameters(*self._compute_loses(batch))
         self._update_target(self._qv, self._target_qv)
 

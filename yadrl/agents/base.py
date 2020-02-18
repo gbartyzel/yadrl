@@ -28,7 +28,7 @@ class BaseOffPolicy(abc.ABC):
                  polyak_factor: float = 0.001,
                  update_frequency: int = 1,
                  target_update_frequency: int = 1000,
-                 update_steps: int = 4,
+                 update_steps: int = 1,
                  use_soft_update: bool = False,
                  use_combined_experience_replay: bool = False,
                  use_state_normalization: bool = False,
@@ -71,7 +71,8 @@ class BaseOffPolicy(abc.ABC):
         self._memory = ReplayMemory(
             capacity=memory_capacity,
             combined=use_combined_experience_replay,
-            torch_backend=True)
+            torch_backend=True,
+            device=self._device)
 
         self._rollout = Rollout(length=n_step, discount_factor=discount_factor)
 

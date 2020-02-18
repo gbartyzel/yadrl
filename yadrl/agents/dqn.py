@@ -89,7 +89,7 @@ class DQN(BaseOffPolicy):
         return random.randint(0, self._action_dim - 1)
 
     def _update(self):
-        batch = self._memory.sample(self._batch_size, self._device)
+        batch = self._memory.sample(self._batch_size)
 
         if self._distribution_type == 'categorical':
             loss = self._compute_categorical_loss(batch)
@@ -98,7 +98,7 @@ class DQN(BaseOffPolicy):
         else:
             loss = self._compute_td_loss(batch)
 
-        self._writer.add_scalar('loss', loss, self._step)
+        self._writer.add_scalar('loss', loss, self._env_step)
         self._optim.zero_grad()
         loss.backward()
         if self._grad_norm_value > 0.0:

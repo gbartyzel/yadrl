@@ -1,5 +1,5 @@
-from collections import namedtuple, deque
-from typing import Dict
+from collections import deque
+from collections import namedtuple
 from typing import List
 from typing import Tuple
 from typing import Union
@@ -108,11 +108,11 @@ class Rollout:
 if __name__ == '__main__':
     rollout = Rollout(5, 0.99)
     for i in range(5):
-        state = np.random.rand(1, 4)
+        state = np.random.rand(1, 2)
         action = np.random.rand(2)
         reward = 1
-        next_state = np.random.rand(1, 4)
+        next_state = np.random.rand(1, 2)
         mask = False
         tran = rollout.get_transition(state, action, reward, next_state, mask)
-        if tran is not None:
-            print(tran[2])
+        print(state)
+        print(tran)

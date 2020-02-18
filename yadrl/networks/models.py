@@ -3,15 +3,14 @@ from typing import Callable
 from typing import Dict
 from typing import Optional
 from typing import Tuple
-from typing import Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from yadrl.networks.heads import RelaxedCategoricalPolicyHead
 from yadrl.networks.heads import DeterministicPolicyHead
 from yadrl.networks.heads import GaussianPolicyHead
+from yadrl.networks.heads import RelaxedCategoricalPolicyHead
 from yadrl.networks.heads import ValueHead
 
 
@@ -167,7 +166,7 @@ class Critic(nn.Module):
         assert distribution_type in ('categorical', 'quantile', 'none')
         if distribution_type == 'none':
             support_dim = 1
-        self._phi = deepcopy(phi)
+        self._phi = phi
         self._value = ValueHead(self._phi.output_dim, support_dim)
         self._support_dim = support_dim
         self._distribution_type = distribution_type
@@ -185,12 +184,12 @@ class Critic(nn.Module):
 
 class DoubleCritic(nn.Module):
     def __init__(self,
-                 phi: nn.Module,
+                 phi: Tuple[nn.Module, nn.Module],
                  distribution_type: str = 'none',
                  support_dim: int = 1):
         super(DoubleCritic, self).__init__()
-        self._critic_1 = Critic(phi, distribution_type, support_dim)
-        self._critic_2 = Critic(phi, distribution_type, support_dim)
+        self._critic_1 = Critic(phi[0], distribution_type, support_dim)
+        self._critic_2 = Critic(phi[1], distribution_type, support_dim)
 
     def q1_parameters(self):
         return self._critic_1.parameters()

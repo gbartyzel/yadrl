@@ -9,15 +9,16 @@ import torch.optim as optim
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks.models import CategoricalActor, DoubleCritic, DoubleDQN
+from yadrl.networks.models import CategoricalActor
+from yadrl.networks.models import DoubleDQN
 
 
 class SACDiscrete(BaseOffPolicy):
     def __init__(self,
                  pi_phi: nn.Module,
-                 qvs_phi: nn.Module,
+                 qv_phi: nn.Module,
                  pi_lrate: float,
-                 qvs_lrate: float,
+                 qv_lrate: float,
                  alpha_lrate: float,
                  pi_grad_norm_value: float = 0.0,
                  qvs_grad_norm_value: float = 0.0,
@@ -33,10 +34,10 @@ class SACDiscrete(BaseOffPolicy):
             pi_phi, self._action_dim).to(self._device)
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
-        self._qv = DoubleDQN(qvs_phi, self._action_dim).to(self._device)
-        self._target_qv = DoubleDQN(qvs_phi, self._action_dim).to(self._device)
-        self._qv_1_optim = optim.Adam(self._qv.q1_parameters(), qvs_lrate)
-        self._qv_2_optim = optim.Adam(self._qv.q2_parameters(), qvs_lrate)
+        self._qv = DoubleDQN(qv_phi, self._action_dim).to(self._device)
+        self._target_qv = DoubleDQN(qv_phi, self._action_dim).to(self._device)
+        self._qv_1_optim = optim.Adam(self._qv.q1_parameters(), qv_lrate)
+        self._qv_2_optim = optim.Adam(self._qv.q2_parameters(), qv_lrate)
 
         self._alpha_tuning = alpha_tuning
         if alpha_tuning:
@@ -66,14 +67,15 @@ class SACDiscrete(BaseOffPolicy):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        next_action, log_prob, _ = self._pi(next_state)
-        target_next_qs = self._target_qv(next_state)
-        target_next_q = torch.min(
-            (target_next_qs[0] * next_action).sum(-1, True),
-            (target_next_qs[1] * next_action).sum(-1, True))
-        target_next_v = target_next_q - self._alpha * log_prob
-        target_q = self._td_target(batch.reward, batch.mask,
-                                   target_next_v).detach()
+        with torch.no_grad():
+            next_action, log_prob, _ = self._pi(next_state)
+            target_next_qs = self._target_qv(next_state)
+            target_next_q = torch.min(
+                (target_next_qs[0] * next_action).sum(-1, True),
+                (target_next_qs[1] * next_action).sum(-1, True))
+            target_next_v = target_next_q - self._alpha * log_prob
+            target_q = self._td_target(batch.reward, batch.mask,
+                                       target_next_v)
 
         expected_q1, expected_q2 = self._qv(state)
 
@@ -121,7 +123,7 @@ class SACDiscrete(BaseOffPolicy):
             alpha_loss.backward()
             self._alpha_optim.step()
 
-            self._alpha = torch.exp(self._log_alpha)
+            self._alpha = self._log_alpha.exp().detach()
 
         self._data_to_log['alpha'] = self._alpha
 

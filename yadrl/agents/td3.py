@@ -1,7 +1,6 @@
 import copy
 from typing import NoReturn
-from typing import Sequence
-from typing import Union
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -20,15 +19,15 @@ class TD3(BaseOffPolicy):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
-                 action_limit: Union[np.ndarray, Sequence[float]],
-                 target_noise_limit: Union[np.ndarray, Sequence[float]],
-                 noise_std: float,
-                 target_noise_std: float,
                  policy_update_frequency: int,
                  pi_lrate: float,
                  qvs_lrate: float,
-                 pi_grad_norm_value: float,
-                 qvs_grad_norm_value: float,
+                 pi_grad_norm_value: float = 0.0,
+                 qvs_grad_norm_value: float = 0.0,
+                 action_limit: Tuple[float, float] = (-1.0, 1.0),
+                 target_noise_limit: Tuple[float, float] = (-0.5, 0.5),
+                 noise_std: float = 0.1,
+                 target_noise_std: float = 0.2,
                  **kwargs):
         super(TD3, self).__init__(**kwargs)
         GaussianNoise.TORCH_BACKEND = True
@@ -36,7 +35,9 @@ class TD3(BaseOffPolicy):
             raise ValueError
         self._action_limit = action_limit
         self._target_noise_limit = target_noise_limit
+
         self._policy_update_frequency = policy_update_frequency
+
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qvs_grad_norm_value = qvs_grad_norm_value
 
@@ -47,8 +48,6 @@ class TD3(BaseOffPolicy):
         self._qv = DoubleCritic(qv_phi).to(self._device)
         self._target_qv = copy.deepcopy(self._qv).to(self._device)
         self._qv_optim = optim.Adam(self._qv.parameters(), qvs_lrate)
-
-        self.load()
 
         self._noise = GaussianNoise(self._action_dim, sigma=noise_std)
         self._target_noise = GaussianNoise(
@@ -67,11 +66,11 @@ class TD3(BaseOffPolicy):
         return action[0].cpu().numpy()
 
     def _update(self):
-        batch = self._memory.sample(self._batch_size, self._device)
+        batch = self._memory.sample(self._batch_size)
         self._update_critic(batch)
 
-        if self._step % (self._policy_update_frequency *
-                         self._update_frequency) == 0:
+        if self._env_step % (self._policy_update_frequency *
+                             self._update_frequency) == 0:
             self._update_actor(batch)
             self._update_target(self._pi, self._target_pi)
             self._update_target(self._qv, self._target_qv)
@@ -116,7 +115,7 @@ class TD3(BaseOffPolicy):
             self._pi.load_state_dict(model['actor'])
             self._qv.load_state_dict(model['critic'])
             self._target_qv.load_state_dict(model['target_critic'])
-            self._step = model['step']
+            self._env_step = model['step']
             if 'state_norm' in model:
                 self._state_normalizer.load(model['state_norm'])
 
@@ -125,10 +124,10 @@ class TD3(BaseOffPolicy):
         state_dict['actor'] = self._pi.state_dict(),
         state_dict['critic'] = self._qv.state_dict()
         state_dict['target_critic'] = self._target_qv.state_dict()
-        state_dict['step'] = self._step
+        state_dict['step'] = self._env_step
         if self._use_state_normalization:
             state_dict['state_norm'] = self._state_normalizer.state_dict()
-        torch.save(state_dict, 'model_{}.sth'.format(self._step))
+        torch.save(state_dict, 'model_{}.sth'.format(self._env_step))
 
     @property
     def parameters(self):
