@@ -106,9 +106,8 @@ class DDPG(BaseOffPolicy):
 
     def _update_critic(self, batch: Batch):
         next_state = self._state_normalizer(batch.next_state, self._device)
-        with torch.no_grad():
-            next_action = self._target_pi(next_state)
-            next_critic_output = self._target_qv(next_state, next_action)
+        next_action = self._target_pi(next_state)
+        next_critic_output = self._target_qv(next_state, next_action).detach()
 
         loss = self._critic_loss_fn[self._distribution_type](batch,
                                                              next_critic_output)

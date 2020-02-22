@@ -112,18 +112,17 @@ class DQN(BaseOffPolicy):
         state = self._state_normalizer(batch.state, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
-        with torch.no_grad():
-            target_next_q = self._target_qv(next_state, True)
-            if self._use_double_q:
-                next_action = self._qv(next_state, True).argmax(1).view(-1, 1)
-                target_next_q = target_next_q.gather(1, next_action)
-            else:
-                target_next_q = target_next_q.max(1)[0].view(-1, 1)
+        target_next_q = self._target_qv(next_state, True)
+        if self._use_double_q:
+            next_action = self._qv(next_state, True).argmax(1).view(-1, 1)
+            target_next_q = target_next_q.gather(1, next_action)
+        else:
+            target_next_q = target_next_q.max(1)[0].view(-1, 1)
 
-            target_q = utils.td_target(reward=batch.reward,
-                                       mask=batch.mask,
-                                       next_value=target_next_q,
-                                       discount=self._discount)
+        target_q = utils.td_target(reward=batch.reward,
+                                   mask=batch.mask,
+                                   next_value=target_next_q,
+                                   discount=self._discount).detach()
         expected_q = self._qv(state, True).gather(1, batch.action.long())
         loss = utils.huber_loss(expected_q, target_q)
 
@@ -134,24 +133,23 @@ class DQN(BaseOffPolicy):
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         batch_vec = torch.arange(self._batch_size).long()
-        with torch.no_grad():
-            next_probs = self._target_qv(next_state, True)
-            exp_atoms = self._atoms.expand_as(next_probs)
+        next_probs = self._target_qv(next_state, True)
+        exp_atoms = self._atoms.expand_as(next_probs)
 
-            if self._use_double_q:
-                probs = self._qv(next_state, True)
-                next_q = probs.mul(exp_atoms).sum(-1)
-            else:
-                next_q = next_probs.mul(exp_atoms).sum(-1)
-            next_action = next_q.argmax(-1).long()
+        if self._use_double_q:
+            probs = self._qv(next_state, True)
+            next_q = probs.mul(exp_atoms).sum(-1)
+        else:
+            next_q = next_probs.mul(exp_atoms).sum(-1)
+        next_action = next_q.argmax(-1).long()
 
-            next_probs = next_probs[batch_vec, next_action, :]
-            target_probs = utils.l2_projection(next_probs=next_probs,
-                                               reward=batch.reward,
-                                               mask=batch.mask,
-                                               atoms=self._atoms,
-                                               v_limit=self._v_limit,
-                                               discount=self._discount)
+        next_probs = next_probs[batch_vec, next_action, :]
+        target_probs = utils.l2_projection(next_probs=next_probs,
+                                           reward=batch.reward,
+                                           mask=batch.mask,
+                                           atoms=self._atoms,
+                                           v_limit=self._v_limit,
+                                           discount=self._discount).detach()
         action = batch.action.squeeze().long()
         probs = self._qv(state, True)[batch_vec, action, :]
         probs = torch.clamp(probs, 1e-7, 1.0)
@@ -164,17 +162,17 @@ class DQN(BaseOffPolicy):
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         batch_vec = torch.arange(self._batch_size).long()
-        with torch.no_grad():
-            next_quantiles = self._target_qv(next_state, True)
-            if self._use_double_q:
-                next_q = self._qv(next_state, True).mean(-1)
-            else:
-                next_q = next_quantiles.mean(-1)
-            next_action = next_q.argmax(-1).long()
+        next_quantiles = self._target_qv(next_state, True)
+        if self._use_double_q:
+            next_q = self._qv(next_state, True).mean(-1)
+        else:
+            next_q = next_quantiles.mean(-1)
+        next_action = next_q.argmax(-1).long()
 
-            next_quantiles = next_quantiles[batch_vec, next_action, :]
-            target_quantiles = self._td_target(batch.reward, batch.mask,
-                                               next_quantiles)
+        next_quantiles = next_quantiles[batch_vec, next_action, :]
+        target_quantiles = self._td_target(reward=batch.reward,
+                                           mask=batch.mask,
+                                           next_value=next_quantiles).detach()
 
         action = batch.action.long().squeeze()
         expected_quantiles = self._qv(state, True)

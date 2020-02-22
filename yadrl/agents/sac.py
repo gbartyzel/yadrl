@@ -66,11 +66,11 @@ class SAC(BaseOffPolicy):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        with torch.no_grad():
-            next_action, log_prob, _ = self._pi(next_state)
-            target_next_q = torch.min(*self._target_qv(next_state, next_action))
-            target_next_v = target_next_q - self._alpha * log_prob
-            target_q = self._td_target(batch.reward, batch.mask, target_next_v)
+        next_action, log_prob, _ = self._pi(next_state)
+        target_next_q = torch.min(*self._target_qv(next_state, next_action))
+        target_next_v = target_next_q - self._alpha * log_prob
+        target_q = self._td_target(batch.reward, batch.mask,
+                                   target_next_v).detach()
         expected_q1, expected_q2 = self._qv(state, batch.action)
 
         q1_loss = mse_loss(expected_q1, target_q)

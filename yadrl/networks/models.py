@@ -1,6 +1,7 @@
 from copy import deepcopy
 from typing import Callable
 from typing import Dict
+from typing import Iterator
 from typing import Optional
 from typing import Tuple
 
@@ -10,7 +11,7 @@ import torch.nn.functional as F
 
 from yadrl.networks.heads import DeterministicPolicyHead
 from yadrl.networks.heads import GaussianPolicyHead
-from yadrl.networks.heads import RelaxedCategoricalPolicyHead
+from yadrl.networks.heads import GumbelSoftmaxPolicyHead
 from yadrl.networks.heads import ValueHead
 
 
@@ -136,6 +137,49 @@ class QuantileDQNModel(DQNModel):
         return quants
 
 
+class MultiDQN(nn.Module):
+    def __init__(self,
+                 phi: nn.Module,
+                 output_dim: int,
+                 heads_num: int = 2,
+                 dueling: bool = True,
+                 noise_type: str = 'none',
+                 sigma_init: float = 0.5):
+        super(MultiDQN, self).__init__()
+        if isinstance(phi, tuple):
+            self._heads = nn.ModuleList([
+                DQNModel(phi[i], output_dim, dueling, noise_type, sigma_init)
+                for i in range(heads_num)
+            ])
+        else:
+            self._heads = nn.ModuleList([
+                DQNModel(phi, output_dim, dueling, noise_type, sigma_init)
+                for _ in range(heads_num)
+            ])
+
+    def parameters(self, item: Optional[int] = None) -> Iterator[nn.Parameter]:
+        if item is not None:
+            return self._heads[item].parameters()
+        return super().parameters()
+
+    def named_parameters(self,
+                         prefix: str = '',
+                         recurse: bool = True,
+                         item: Optional[int] = None
+                         ) -> Iterator[Tuple[str, nn.Parameter]]:
+        if item is not None:
+            return self._heads[item].named_parameters(prefix, recurse)
+        return super().named_parameters(prefix, recurse)
+
+    def forward(self,
+                x: Tuple[torch.Tensor, ...],
+                train: bool = False,
+                unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
+        if unsqueeze:
+            return tuple(head(x, train).unsqueeze(1) for head in self._heads)
+        return tuple(head(x, train) for head in self._heads)
+
+
 class DoubleDQN(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int, dueling: bool = True):
         super(DoubleDQN, self).__init__()
@@ -247,16 +291,16 @@ class GaussianActor(nn.Module):
         return self._head.sample(self._phi(x), raw_action, deterministic)
 
 
-class CategoricalActor(nn.Module):
+class GumbelSoftmaxActor(nn.Module):
     def __init__(self, phi: nn.Module, output_dim: int):
-        super(CategoricalActor, self).__init__()
+        super(GumbelSoftmaxActor, self).__init__()
         self._phi = deepcopy(phi)
-        self._head = RelaxedCategoricalPolicyHead(self._phi.output_dim,
-                                                  output_dim)
+        self._head = GumbelSoftmaxPolicyHead(self._phi.output_dim,
+                                             output_dim)
 
     def forward(self,
                 x: torch.Tensor,
-                temperature: torch.Tensor = torch.Tensor([1.0]),
+                temperature: int = 1.0,
                 action: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
                                                                 ...]:
         return self._head.sample(self._phi(x), temperature, action)
@@ -267,7 +311,7 @@ class CategoricalActorCritic(nn.Module):
         super(CategoricalActorCritic, self).__init__()
         self._phi = deepcopy(phi)
         self._value = ValueHead(self._phi.output_dim)
-        self._policy = RelaxedCategoricalPolicyHead(
+        self._policy = GumbelSoftmaxPolicyHead(
             input_dim=self._phi.output_dim,
             output_dim=output_dim)
 
@@ -309,8 +353,12 @@ class GaussianActorCritic(nn.Module):
         action, log_prob, entropy = self._policy.sample(x, action)
         return action, log_prob, entropy, value
 
+
 if __name__ == '__main__':
     import yadrl.networks.bodies as b
-    head = DistributionalCritic(
-        b.MLPNetwork(14, (128, 128)), 'categorical', 51)
-    print(head(torch.rand(1, 14)).shape)
+
+    head = MultiDQN(
+        b.MLPNetwork(14, (128, 128)), 3, 8)
+    print(head)
+    for o in head(torch.rand(1, 14)):
+        print(o)
