@@ -1,7 +1,9 @@
 from typing import Callable
+from typing import Iterator
 from typing import Optional
 from typing import Sequence
 from typing import Tuple
+from typing import Union
 
 import torch
 import torch.nn as nn
@@ -26,16 +28,23 @@ def _get_layer(layer_type, input_dim, output_dim, sigma_init):
 
 class ValueHead(nn.Module):
     def __init__(self,
-                 input_dim: int,
-                 output_dim: int = 1,
+                 phi: nn.Module,
+                 support_dim: int = 1,
+                 distribution_type: str = 'none',
                  noise_type: str = 'none',
                  sigma_init: float = 0.5):
         super(ValueHead, self).__init__()
+        assert distribution_type in ('none', 'categorical', 'quantile')
+        self._support_dim = 1 if distribution_type == 'none' else support_dim
         self._enable_noise = noise_type != 'none'
-        self._value = _get_layer(layer_type=noise_type,
-                                 input_dim=input_dim,
-                                 output_dim=output_dim,
-                                 sigma_init=sigma_init)
+        self._distribution_type = distribution_type
+
+        self._phi = phi
+        self._value = _get_layer(
+            layer_type=noise_type,
+            input_dim=list(phi.parameters())[-1].shape[0],
+            output_dim=self._support_dim,
+            sigma_init=sigma_init)
 
         if not self._enable_noise:
             self._initialize_variables()
@@ -45,8 +54,15 @@ class ValueHead(nn.Module):
         self._value.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        value = self._value(x)
-        return value
+        x = self._phi(x)
+        out = self._value(x)
+        if self._distribution_type == 'none':
+            return out
+        else:
+            probs = out.view(-1, self._support_dim)
+            if self._distribution_type == 'categorical':
+                return F.softmax(probs, dim=-1)
+            return probs
 
     def sample_noise(self):
         if self._enable_noise:
@@ -57,26 +73,165 @@ class ValueHead(nn.Module):
             self._value.reset_noise()
 
 
+class DQNHead(nn.Module):
+    def __init__(self,
+                 phi: nn.Module,
+                 output_dim: int,
+                 dueling: bool = False,
+                 support_dim: int = 1,
+                 distribution_type: str = 'none',
+                 noise_type: str = 'none',
+                 sigma_init: float = 0.5):
+        super(DQNHead, self).__init__()
+        assert distribution_type in ('none', 'categorical', 'quantile')
+        self._support_dim = 1 if distribution_type == 'none' else support_dim
+        self._enable_noise = noise_type != 'none'
+        self._dueling = dueling
+
+        self._phi = phi
+        self._head = _get_layer(
+            layer_type=noise_type,
+            input_dim=list(phi.parameters())[-1].shape[0],
+            output_dim=output_dim * support_dim,
+            sigma_init=sigma_init)
+        if dueling:
+            self._value = _get_layer(
+                layer_type=noise_type,
+                input_dim=list(phi.parameters())[-1].shape[0],
+                output_dim=support_dim,
+                sigma_init=sigma_init)
+        if not self._enable_noise:
+            self._initialize_variables()
+
+    def _initialize_variables(self):
+        self._value.weight.data.uniform_(-3e-3, 3e-3)
+        self._value.bias.data.uniform_(-3e-3, 3e-3)
+
+    def forward(self,
+                x: torch.Tensor,
+                sample_noise: bool = False):
+        self.reset_noise()
+        if sample_noise:
+            self.sample_noise()
+        x = self._phi(x)
+        if self._distribution_type != 'none':
+            return self._distributional_forward(x)
+        return self._forward(x)
+
+    def _forward(self, x: torch.Tensor):
+        out = self._head(x)
+        if self._dueling:
+            out += (self._value(x) - out.mean(dim=1, keepdim=True))
+        return out
+
+    def _distributional_forward(self, x: torch.Tensor):
+        out = self._head(x).view(-1, self._output_dim, self._support_dim)
+        if self._dueling:
+            value = self._value(x).view(-1, 1, self._atoms_dim)
+            out += (value - out.mean(dim=-1, keepdim=True))
+        if self._distribution_type == 'categotical':
+            return F.softmax(out, dim=-1)
+        return out
+
+    def sample_noise(self):
+        self._head.sample_noise()
+        if self._dueling:
+            self._value.sample_noise()
+
+    def reset_noise(self):
+        self._head.reset_noise()
+        if self._dueling:
+            self._value.reset_noise()
+
+
+class MultiValueHead(nn.Module):
+    def __init__(self,
+                 phi: Union[nn.Module, Tuple[nn.Module]],
+                 heads_num: int = 2, **kwargs):
+        super(MultiValueHead, self).__init__()
+        if not isinstance(phi, tuple):
+            phi = (phi,) * heads_num
+        self._heads = nn.ModuleList([ValueHead(phi[i], **kwargs)
+                                     for i in range(heads_num)])
+
+    def parameters(self, item: Optional[int] = None) -> Iterator[nn.Parameter]:
+        if item is not None:
+            return self._heads[item].parameters()
+        return super().parameters()
+
+    def named_parameters(self,
+                         prefix: str = '',
+                         recurse: bool = True,
+                         item: Optional[int] = None
+                         ) -> Iterator[Tuple[str, nn.Parameter]]:
+        if item is not None:
+            return self._heads[item].named_parameters(prefix, recurse)
+        return super().named_parameters(prefix, recurse)
+
+    def forward(self,
+                x: Tuple[torch.Tensor, ...],
+                train: bool = False,
+                unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
+        if unsqueeze:
+            return tuple(head(x, train).unsqueeze(1) for head in self._heads)
+        return tuple(head(x, train) for head in self._heads)
+
+
+class MultiDQNHead(nn.Module):
+    def __init__(self,
+                 phi: Union[nn.Module, Tuple[nn.Module]],
+                 heads_num: int = 2, **kwargs):
+        super(MultiDQNHead, self).__init__()
+        if not isinstance(phi, tuple):
+            phi = (phi,) * heads_num
+        self._heads = nn.ModuleList([DQNHead(phi[i], **kwargs)
+                                     for i in range(heads_num)])
+
+    def parameters(self, item: Optional[int] = None) -> Iterator[nn.Parameter]:
+        if item is not None:
+            return self._heads[item].parameters()
+        return super().parameters()
+
+    def named_parameters(self,
+                         prefix: str = '',
+                         recurse: bool = True,
+                         item: Optional[int] = None
+                         ) -> Iterator[Tuple[str, nn.Parameter]]:
+        if item is not None:
+            return self._heads[item].named_parameters(prefix, recurse)
+        return super().named_parameters(prefix, recurse)
+
+    def forward(self,
+                x: Tuple[torch.Tensor, ...],
+                train: bool = False,
+                unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
+        if unsqueeze:
+            return tuple(head(x, train).unsqueeze(1) for head in self._heads)
+        return tuple(head(x, train) for head in self._heads)
+
+
 class DeterministicPolicyHead(nn.Module):
     def __init__(self,
-                 input_dim: int,
+                 phi: nn.Module,
                  output_dim: int,
                  fan_init: bool = True,
                  activation_fn: Callable = torch.tanh):
         super(DeterministicPolicyHead, self).__init__()
         self._activation_fn = activation_fn
 
-        self._action = nn.Linear(input_dim, output_dim)
+        self._phi = phi
+        self._head = nn.Linear(list(phi.parameters())[-1].shape[0], output_dim)
 
         if fan_init:
             self._initialize_variables()
 
     def _initialize_variables(self):
-        self._action.weight.data.uniform_(-3e-3, 3e-3)
-        self._action.bias.data.uniform_(-3e-3, 3e-3)
+        self._head.weight.data.uniform_(-3e-3, 3e-3)
+        self._head.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        action = self._action(x)
+        x = self._phi(x)
+        action = self._head(x)
         if self._activation_fn:
             action = self._activation_fn(action)
         return action
@@ -84,7 +239,7 @@ class DeterministicPolicyHead(nn.Module):
 
 class GaussianPolicyHead(nn.Module):
     def __init__(self,
-                 input_dim: int,
+                 phi: nn.Module,
                  output_dim: int,
                  std_limits: Sequence[float] = (-20.0, 2.0),
                  independent_std: bool = True,
@@ -97,11 +252,13 @@ class GaussianPolicyHead(nn.Module):
         self._std_limits = std_limits
         self._reparameterize = reparameterize
 
-        self._mean = nn.Linear(input_dim, output_dim)
+        self._phi = phi
+        self._mean = nn.Linear(list(phi.parameters())[-1].shape[0], output_dim)
         if independent_std:
             self._log_std = nn.Parameter(torch.zeros(1, output_dim))
         else:
-            self._log_std = nn.Linear(input_dim, output_dim)
+            self._log_std = nn.Linear(list(phi.parameters())[-1].shape[0],
+                                      output_dim)
 
         if fan_init:
             self._initialize_parameters()
@@ -114,6 +271,7 @@ class GaussianPolicyHead(nn.Module):
         self._mean.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+        x = self._phi(x)
         mean = self._mean(x)
         log_std = self._log_std.expand_as(
             mean) if self._independend_std else self._log_std(x)
@@ -152,16 +310,19 @@ class GaussianPolicyHead(nn.Module):
 
 
 class GumbelSoftmaxPolicyHead(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self, phi: nn.Module, output_dim: int):
         super(GumbelSoftmaxPolicyHead, self).__init__()
-        self._logits = nn.Linear(input_dim, output_dim)
+        self._phi = phi
+        self._logits = nn.Linear(list(phi.parameters())[-1].shape[0],
+                                 output_dim)
 
-        self.reser_parameters()
+        self.reset_parameters()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._phi(x)
         return self._logits(x)
 
-    def reser_parameters(self):
+    def reset_parameters(self):
         self._logits.weight.data.uniform_(-3e-3, 3e-3)
         self._logits.bias.data.uniform_(-3e-3, 3e-3)
 

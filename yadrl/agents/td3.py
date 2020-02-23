@@ -1,4 +1,3 @@
-import copy
 from typing import NoReturn
 from typing import Tuple
 
@@ -11,8 +10,8 @@ from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
 from yadrl.common.utils import mse_loss
-from yadrl.networks.models import DeterministicActor
-from yadrl.networks.models import DoubleCritic
+from yadrl.networks.heads import DeterministicPolicyHead
+from yadrl.networks.heads import MultiValueHead
 
 
 class TD3(BaseOffPolicy):
@@ -41,12 +40,19 @@ class TD3(BaseOffPolicy):
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qvs_grad_norm_value = qvs_grad_norm_value
 
-        self._pi = DeterministicActor(pi_phi, self._action_dim).to(self._device)
-        self._target_pi = copy.deepcopy(self._pi).to(self._device)
+        self._pi = DeterministicPolicyHead(
+            pi_phi, self._action_dim).to(self._device)
+        self._target_pi = DeterministicPolicyHead(
+            pi_phi, self._action_dim).to(self._device)
+        self._target_pi.load_state_dict(self._pi.state_dict())
+        self._target_pi.eval()
+
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
-        self._qv = DoubleCritic(qv_phi).to(self._device)
-        self._target_qv = copy.deepcopy(self._qv).to(self._device)
+        self._qv = MultiValueHead(qv_phi, heads_num=2).to(self._device)
+        self._target_qv = MultiValueHead(qv_phi, heads_num=2).to(self._device)
+        self._target_qv.load_state_dict(self._qv.state_dict())
+        self._target_qv.eval()
         self._qv_optim = optim.Adam(self._qv.parameters(), qvs_lrate)
 
         self._noise = GaussianNoise(self._action_dim, sigma=noise_std)

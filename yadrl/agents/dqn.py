@@ -1,5 +1,4 @@
 import random
-from copy import deepcopy
 from typing import NoReturn
 from typing import Tuple
 
@@ -11,9 +10,7 @@ import torch.optim as optim
 import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.scheduler import BaseScheduler
-from yadrl.networks.models import CategoricalDQNModel
-from yadrl.networks.models import DQNModel
-from yadrl.networks.models import QuantileDQNModel
+from yadrl.networks.heads import DQNHead
 
 
 class DQN(BaseOffPolicy):
@@ -40,33 +37,31 @@ class DQN(BaseOffPolicy):
 
         self._epsilon_scheduler = epsilon_scheduler
 
+        self._qv = DQNHead(
+            phi=phi,
+            output_dim=self._action_dim,
+            support_dim=support_dim,
+            distribution_type=distribution_type,
+            dueling=use_dueling,
+            noise_type=noise_type).to(self._device)
+        self._target_qv = DQNHead(
+            phi=phi,
+            output_dim=self._action_dim,
+            support_dim=support_dim,
+            distribution_type=distribution_type,
+            dueling=use_dueling,
+            noise_type=noise_type).to(self._device)
+        self._target_qv.load_state_dict(self._qv.state_dict())
+        self._target_qv.eval()
+
         if distribution_type == 'categorical':
-            self._qv = CategoricalDQNModel(
-                phi=phi,
-                output_dim=self._action_dim,
-                atoms_dim=support_dim,
-                dueling=use_dueling,
-                noise_type=noise_type).to(self._device)
             self._v_limit = v_limit
             self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
                                          device=self._device).unsqueeze(0)
         elif distribution_type == 'quantile':
-            self._qv = QuantileDQNModel(
-                phi=phi,
-                output_dim=self._action_dim,
-                quantiles_dim=support_dim,
-                dueling=use_dueling,
-                noise_type=noise_type).to(self._device)
             self._cumulative_density = torch.from_numpy(
                 (np.arange(support_dim) + 0.5) / support_dim
             ).float().unsqueeze(0).to(self._device)
-        else:
-            self._qv = DQNModel(
-                phi=phi,
-                output_dim=self._action_dim,
-                dueling=use_dueling,
-                noise_type=noise_type).to(self._device)
-        self._target_qv = deepcopy(self._qv)
         self._optim = optim.Adam(self._qv.parameters(), lr=learning_rate,
                                  eps=adam_eps)
 
