@@ -56,20 +56,23 @@ class DDPG(BaseOffPolicy):
                              qv_phi: nn.Module,
                              support_dim: int,
                              v_limit: Tuple[float, float]):
-        self._pi = DeterministicPolicyHead(phi=pi_phi,
-                                           output_dim=self._action_dim,
-                                           fan_init=True).to(self._device)
-        self._target_pi = DeterministicPolicyHead(phi=pi_phi,
-                                                  output_dim=self._action_dim,
-                                                  fan_init=True).to(
-            self._device)
+        self._pi = DeterministicPolicyHead(
+            phi=pi_phi,
+            output_dim=self._action_dim,
+            fan_init=True).to(self._device)
+        self._target_pi = DeterministicPolicyHead(
+            phi=pi_phi,
+            output_dim=self._action_dim,
+            fan_init=True).to(self._device)
 
-        self._qv = ValueHead(phi=qv_phi,
-                             distribution_type=self._distribution_type,
-                             support_dim=support_dim).to(self._device)
-        self._target_qv = ValueHead(phi=qv_phi,
-                                    distribution_type=self._distribution_type,
-                                    support_dim=support_dim).to(self._device)
+        self._qv = ValueHead(
+            phi=qv_phi,
+            distribution_type=self._distribution_type,
+            support_dim=support_dim).to(self._device)
+        self._target_qv = ValueHead(
+            phi=qv_phi,
+            distribution_type=self._distribution_type,
+            support_dim=support_dim).to(self._device)
         self._target_pi.load_state_dict(self._pi.state_dict())
         self._target_qv.load_state_dict(self._qv.state_dict())
 

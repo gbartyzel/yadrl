@@ -67,7 +67,7 @@ class _SACBase(BaseOffPolicy):
         return NotImplementedError
 
     def _update_parameters(self, qs_loss, policy_loss, alpha_loss):
-        for i, loss, optim in enumerate(zip(qs_loss, self._qv_optims)):
+        for i, (loss, optim) in enumerate(zip(qs_loss, self._qv_optims)):
             optim.zero_grad()
             loss.backward()
             if self._qvs_grad_norm_value > 0.0:
@@ -86,8 +86,7 @@ class _SACBase(BaseOffPolicy):
             self._temperature_optim.zero_grad()
             alpha_loss.backward()
             self._temperature_optim.step()
-
-            self._temperature = torch.exp(self._log_temperature)
+            self._temperature = self._log_temperature.exp().detach()
 
     def load(self, path: str) -> NoReturn:
         model = torch.load(path)
@@ -160,38 +159,57 @@ class SACDiscrete(_SACBase):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
-                 action_dim: int, **kwargs):
+                 action_dim: int,
+                 dueling: bool = False,
+                 noise_type: str = 'none', **kwargs):
         super(SACDiscrete, self).__init__(
             pi_module=GumbelSoftmaxPolicyHead(pi_phi, action_dim),
-            qv_module=MultiDQNHead(qv_phi, heads_num=2),
-            target_qv_module=MultiDQNHead(qv_phi, heads_num=2), **kwargs)
+            qv_module=MultiDQNHead(
+                phi=qv_phi, heads_num=2, output_dim=action_dim,
+                dueling=dueling, noise_type=noise_type),
+            target_qv_module=MultiDQNHead(
+                phi=qv_phi, heads_num=2, output_dim=action_dim,
+                dueling=dueling, noise_type=noise_type), **kwargs)
+
+    def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
+        return super()._act(state, train).argmax()
 
     def _compute_loses(self, batch: Batch):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        next_action, log_prob, _ = self._pi(next_state)
+        next_action, log_prob = self._pi(next_state)
         target_next_q = torch.min(*[(tnq * next_action).sum(-1, True)
                                     for tnq in self._target_qv(next_state)])
+
         target_next_v = target_next_q - self._temperature * log_prob
-        target_q = self._td_target(batch.reward, batch.mask,
-                                   target_next_v).detach()
+        target_q = self._td_target(reward=batch.reward,
+                                   mask=batch.mask,
+                                   next_value=target_next_v).detach()
 
-        expected_qs = self._qv(state)
-
+        expected_qs = self._qv(state, True)
         qs_loss = (mse_loss(q.gather(1, batch.action.long()), target_q)
                    for q in expected_qs)
 
-        action, log_prob, _ = self._pi(state)
+        action, log_prob = self._pi(state)
         target_log_prob = torch.min(*[(q * action).sum(-1, True)
                                       for q in self._qv(state)])
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         if self._temperature_tuning:
-            temperature_loss = torch.mean(
-                -self._log_temperature
-                * (log_prob + self._target_entropy).detach())
+            temperature_loss = (
+                    -self._log_temperature
+                    * (log_prob + self._target_entropy).detach()).mean()
         else:
             temperature_loss = 0.0
 
         return qs_loss, policy_loss, temperature_loss
+
+
+def make_sac_agent(type: str, **kwargs):
+    if type == 'discreete':
+        return SACDiscrete(**kwargs)
+    elif type == 'continuous':
+        return SACContinuous(**kwargs)
+    else:
+        raise ValueError

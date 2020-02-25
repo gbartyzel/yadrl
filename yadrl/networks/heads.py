@@ -87,6 +87,7 @@ class DQNHead(nn.Module):
         self._support_dim = 1 if distribution_type == 'none' else support_dim
         self._enable_noise = noise_type != 'none'
         self._dueling = dueling
+        self._distribution_type = distribution_type
 
         self._phi = phi
         self._head = _get_layer(
@@ -104,16 +105,19 @@ class DQNHead(nn.Module):
             self._initialize_variables()
 
     def _initialize_variables(self):
-        self._value.weight.data.uniform_(-3e-3, 3e-3)
-        self._value.bias.data.uniform_(-3e-3, 3e-3)
+        self._head.weight.data.uniform_(-3e-3, 3e-3)
+        self._head.bias.data.uniform_(-3e-3, 3e-3)
+        if self._dueling:
+            self._value.weight.data.uniform_(-3e-3, 3e-3)
+            self._value.bias.data.uniform_(-3e-3, 3e-3)
 
     def forward(self,
                 x: torch.Tensor,
                 sample_noise: bool = False):
+        x = self._phi(x)
         self.reset_noise()
         if sample_noise:
             self.sample_noise()
-        x = self._phi(x)
         if self._distribution_type != 'none':
             return self._distributional_forward(x)
         return self._forward(x)
@@ -134,14 +138,16 @@ class DQNHead(nn.Module):
         return out
 
     def sample_noise(self):
-        self._head.sample_noise()
-        if self._dueling:
-            self._value.sample_noise()
+        if self._enable_noise:
+            self._head.sample_noise()
+            if self._dueling:
+                self._value.sample_noise()
 
     def reset_noise(self):
-        self._head.reset_noise()
-        if self._dueling:
-            self._value.reset_noise()
+        if self._enable_noise:
+            self._head.reset_noise()
+            if self._dueling:
+                self._value.reset_noise()
 
 
 class MultiValueHead(nn.Module):
@@ -173,8 +179,8 @@ class MultiValueHead(nn.Module):
                 train: bool = False,
                 unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
         if unsqueeze:
-            return tuple(head(x, train).unsqueeze(1) for head in self._heads)
-        return tuple(head(x, train) for head in self._heads)
+            return tuple([head(x, train).unsqueeze(1) for head in self._heads])
+        return tuple([head(x, train) for head in self._heads])
 
 
 class MultiDQNHead(nn.Module):
@@ -202,7 +208,7 @@ class MultiDQNHead(nn.Module):
         return super().named_parameters(prefix, recurse)
 
     def forward(self,
-                x: Tuple[torch.Tensor, ...],
+                x: torch.Tensor,
                 train: bool = False,
                 unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
         if unsqueeze:
@@ -270,19 +276,17 @@ class GaussianPolicyHead(nn.Module):
         self._mean.weight.data.uniform_(-3e-3, 3e-3)
         self._mean.bias.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+    def forward(self,
+                x: torch.Tensor,
+                raw_action: Optional[torch.Tensor] = None,
+                deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
         x = self._phi(x)
         mean = self._mean(x)
-        log_std = self._log_std.expand_as(
-            mean) if self._independend_std else self._log_std(x)
+        if self._independend_std:
+            log_std = self._log_std.expand_as(mean)
+        else:
+            log_std = self._log_std(x)
         log_std = torch.clamp(log_std, *self._std_limits)
-        return mean, log_std
-
-    def sample(self,
-               x: torch.Tensor,
-               raw_action: Optional[torch.Tensor] = None,
-               deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
-        mean, log_std = self.forward(x)
         covariance = torch.diag_embed(log_std.exp())
         dist = MultivariateNormal(loc=mean, scale_tril=covariance)
 
@@ -318,21 +322,18 @@ class GumbelSoftmaxPolicyHead(nn.Module):
 
         self.reset_parameters()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._phi(x)
-        return self._logits(x)
-
     def reset_parameters(self):
         self._logits.weight.data.uniform_(-3e-3, 3e-3)
         self._logits.bias.data.uniform_(-3e-3, 3e-3)
 
-    def sample(self,
-               x: torch.Tensor,
-               temperature: int = 1.0,
-               action: Optional[torch.Tensor] = None,
-               deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
+    def forward(self,
+                x: torch.Tensor,
+                temperature: int = 1.0,
+                action: Optional[torch.Tensor] = None,
+                deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
         temperature_tensor = torch.Tensor([temperature]).to(x.device)
-        x = self.forward(x)
+        x = self._phi(x)
+        x = self._logits(x)
         dist = RelaxedOneHotCategorical(temperature=temperature_tensor,
                                         logits=x)
         if not action:
