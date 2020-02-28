@@ -121,8 +121,8 @@ class _SACBase(BaseOffPolicy):
 class SACContinuous(_SACBase):
     def __init__(self,
                  pi_phi: nn.Module,
-                 qv_phi: nn.Module,
-                 action_dim: int, **kwargs):
+                 qv_phi: nn.Module, **kwargs):
+        action_dim = kwargs['env'].action_space.shape[0]
         super(SACContinuous, self).__init__(
             pi_module=GaussianPolicyHead(pi_phi, action_dim),
             qv_module=MultiValueHead(qv_phi, heads_num=2),
@@ -146,22 +146,22 @@ class SACContinuous(_SACBase):
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         if self._temperature_tuning:
-            alpha_loss = torch.mean(
+            temperature_loss = torch.mean(
                 -self._log_temperature
                 * (log_prob + self._target_entropy).detach())
         else:
-            alpha_loss = 0.0
+            temperature_loss = 0.0
 
-        return qs_loss, policy_loss, alpha_loss
+        return qs_loss, policy_loss, temperature_loss
 
 
 class SACDiscrete(_SACBase):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
-                 action_dim: int,
                  dueling: bool = False,
                  noise_type: str = 'none', **kwargs):
+        action_dim = kwargs['env'].action_space.n
         super(SACDiscrete, self).__init__(
             pi_module=GumbelSoftmaxPolicyHead(pi_phi, action_dim),
             qv_module=MultiDQNHead(
@@ -179,21 +179,21 @@ class SACDiscrete(_SACBase):
         next_state = self._state_normalizer(batch.next_state)
 
         next_action, log_prob = self._pi(next_state)
-        target_next_q = torch.min(*[(tnq * next_action).sum(-1, True)
-                                    for tnq in self._target_qv(next_state)])
+        target_next_qs = self._target_qv(next_state, True, True)
+        target_next_q = torch.min(torch.cat(target_next_qs, 1), 1)[0]
+        target_next_q = torch.sum(target_next_q * next_action, -1, True)
 
         target_next_v = target_next_q - self._temperature * log_prob
         target_q = self._td_target(reward=batch.reward,
                                    mask=batch.mask,
                                    next_value=target_next_v).detach()
 
-        expected_qs = self._qv(state, True)
         qs_loss = (mse_loss(q.gather(1, batch.action.long()), target_q)
-                   for q in expected_qs)
+                   for q in self._qv(state, True))
 
         action, log_prob = self._pi(state)
-        target_log_prob = torch.min(*[(q * action).sum(-1, True)
-                                      for q in self._qv(state)])
+        pi_q = torch.min(torch.cat(self._qv(state, True, True), 1), 1)[0]
+        target_log_prob = torch.sum(pi_q * action, -1, True)
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         if self._temperature_tuning:
@@ -207,7 +207,7 @@ class SACDiscrete(_SACBase):
 
 
 def make_sac_agent(type: str, **kwargs):
-    if type == 'discreete':
+    if type == 'discrete':
         return SACDiscrete(**kwargs)
     elif type == 'continuous':
         return SACContinuous(**kwargs)

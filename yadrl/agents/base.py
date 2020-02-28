@@ -1,4 +1,6 @@
 import abc
+import datetime
+import os
 from typing import Any
 from typing import Tuple
 from typing import Union
@@ -82,7 +84,14 @@ class BaseOffPolicy(abc.ABC):
         else:
             self._state_normalizer = normalizer.DummyNormalizer()
 
-        self._writer = SummaryWriter(logdir)
+        self._writer = SummaryWriter(self._create_logdir(logdir))
+
+    @staticmethod
+    def _create_logdir(log_dir: str) -> str:
+        if not os.path.isdir(log_dir):
+            os.mkdir(log_dir)
+        now = datetime.datetime.now().strftime('%d_%m_%y_%H_%M_%S')
+        return os.path.join(log_dir, now)
 
     def step(self, train: bool):
         if train and self._memory.size < self._warm_up_steps:

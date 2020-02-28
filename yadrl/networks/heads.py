@@ -1,3 +1,4 @@
+import copy
 from typing import Callable
 from typing import Iterator
 from typing import Optional
@@ -85,6 +86,7 @@ class DQNHead(nn.Module):
         super(DQNHead, self).__init__()
         assert distribution_type in ('none', 'categorical', 'quantile')
         self._support_dim = 1 if distribution_type == 'none' else support_dim
+        self._output_dim = output_dim
         self._enable_noise = noise_type != 'none'
         self._dueling = dueling
         self._distribution_type = distribution_type
@@ -190,7 +192,7 @@ class MultiDQNHead(nn.Module):
         super(MultiDQNHead, self).__init__()
         if not isinstance(phi, tuple):
             phi = (phi,) * heads_num
-        self._heads = nn.ModuleList([DQNHead(phi[i], **kwargs)
+        self._heads = nn.ModuleList([DQNHead(copy.deepcopy(phi[i]), **kwargs)
                                      for i in range(heads_num)])
 
     def parameters(self, item: Optional[int] = None) -> Iterator[nn.Parameter]:
@@ -348,5 +350,18 @@ class GumbelSoftmaxPolicyHead(nn.Module):
 
 
 if __name__ == '__main__':
-    head = GumbelSoftmaxPolicyHead(256, 4)
-    print(head.sample(torch.rand(1, 256)))
+    from yadrl.networks.bodies import MLPNetwork
+
+    v_limit = (-10.0, 10.0)
+    support_dim = 51
+
+    atoms = torch.linspace(v_limit[0], v_limit[1], support_dim).unsqueeze(0)
+    head = MultiDQNHead(
+        phi=MLPNetwork(10, (64, 64)),
+        heads_num=4,
+        output_dim=8,
+        distribution_type='categorical',
+        support_dim=support_dim)
+    probs = torch.cat(head(torch.rand(1, 10), True, True), dim=1)
+    q_value = probs.mul(atoms.expand_as(probs)).sum(-1)
+    print(q_value.min())
