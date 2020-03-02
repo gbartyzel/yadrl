@@ -33,6 +33,7 @@ class MaxminDQN(BaseOffPolicy):
         self._distribution_type = distribution_type
 
         self._epsilon_scheduler = epsilon_scheduler
+        self._batch_idx = torch.arange(self._batch_size).long()
 
         self._qv = MultiDQNHead(
             phi=phi,
@@ -57,6 +58,11 @@ class MaxminDQN(BaseOffPolicy):
             self._v_limit = v_limit
             self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
                                          device=self._device).unsqueeze(0)
+        elif distribution_type == 'quantile':
+            self._cumulative_density = torch.from_numpy(
+                (np.arange(support_dim) + 0.5) / support_dim
+            ).float().unsqueeze(0).to(self._device)
+
         self._optims = [
             optim.RMSprop(self._qv.parameters(item=i), lr=learning_rate)
             for i in range(heads_num)
@@ -71,6 +77,8 @@ class MaxminDQN(BaseOffPolicy):
             q_value = torch.cat(self._qv(state, train, True), 1)
             if self._distribution_type == 'categorical':
                 q_value = q_value.mul(self._atoms.expand_as(q_value)).sum(-1)
+            if self._distribution_type == 'quantile':
+                q_value = q_value.mean(-1)
             q_value = q_value.min(1)[0]
         self._qv.train()
 
@@ -83,7 +91,12 @@ class MaxminDQN(BaseOffPolicy):
         batch = self._memory.sample(self._batch_size)
 
         idx = np.random.randint(0, self._heads_num)
-        loss = self._compute_categorical_loss(batch, idx)
+        if self._distribution_type == 'categorical':
+            loss = self._compute_categorical_loss(batch, idx)
+        elif self._distribution_type == 'quantile':
+            loss = self._compute_quantile_loss(batch, idx)
+        else:
+            loss = self._compute_td_loss(batch, idx)
 
         self._writer.add_scalar('loss', loss, self._env_step)
 
@@ -110,21 +123,19 @@ class MaxminDQN(BaseOffPolicy):
                                    discount=self._discount).detach()
 
         expected_q = self._qv(state, True)[idx].gather(1, batch.action.long())
-        loss = utils.mse_loss(expected_q, target_q)
+        loss = utils.huber_loss(expected_q, target_q)
         return loss
 
     def _compute_categorical_loss(self, batch, idx):
         state = self._state_normalizer(batch.state, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
-        batch_vec = torch.arange(self._batch_size).long()
         next_probs = torch.cat(self._target_qv(next_state, True, True), 1)
         exp_atoms = self._atoms.expand_as(next_probs)
         next_q, head_idx = next_probs.mul(exp_atoms).sum(-1).min(1)
         next_action = next_q.argmax(-1).long()
         head_idx = head_idx.gather(1, next_action.view(-1, 1)).squeeze()
-
-        next_probs = next_probs[batch_vec, head_idx, next_action, :]
+        next_probs = next_probs[self._batch_idx, head_idx, next_action, :]
         target_probs = utils.l2_projection(next_probs=next_probs,
                                            reward=batch.reward,
                                            mask=batch.mask,
@@ -132,11 +143,35 @@ class MaxminDQN(BaseOffPolicy):
                                            v_limit=self._v_limit,
                                            discount=self._discount).detach()
         action = batch.action.squeeze().long()
-        probs = self._qv(state, True)[idx][batch_vec, action, :]
+        probs = self._qv(state, True)[idx][self._batch_idx, action, :]
         probs = torch.clamp(probs, 1e-7, 1.0)
         loss = -(target_probs * probs.log()).sum(-1)
 
         return loss.mean()
+
+    def _compute_quantile_loss(self, batch, idx):
+        state = self._state_normalizer(batch.state, self._device)
+        next_state = self._state_normalizer(batch.next_state, self._device)
+
+        next_quants = torch.cat(self._target_qv(next_state, True, True), 1)
+        next_q, head_idx = next_quants.mean(-1).min(1)
+        next_action = next_q.argmax(-1).long()
+        head_idx = head_idx.gather(1, next_action.view(-1, 1)).squeeze()
+
+        next_quants = next_quants[self._batch_idx, head_idx, next_action, :]
+        target_quants = self._td_target(reward=batch.reward,
+                                        mask=batch.mask,
+                                        next_value=next_quants).detach()
+
+        action = batch.action.long().squeeze()
+        expected_quants = self._qv(state, True)[idx][self._batch_idx, action, :]
+
+        loss = utils.quantile_hubber_loss(
+            prediction=expected_quants,
+            target=target_quants,
+            cumulative_density=self._cumulative_density)
+
+        return loss
 
     def load(self, path: str) -> NoReturn:
         model = torch.load(path)

@@ -54,9 +54,14 @@ class ValueHead(nn.Module):
         self._value.weight.data.uniform_(-3e-3, 3e-3)
         self._value.bias.data.uniform_(-3e-3, 3e-3)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._phi(x)
-        out = self._value(x)
+    def forward(self,
+                x: torch.Tensor,
+                sample_noise: bool = False) -> torch.Tensor:
+        self.reset_noise()
+        if sample_noise:
+            self.sample_noise()
+
+        out = self._valuex(x)
         if self._distribution_type == 'none':
             return out
         else:
@@ -95,13 +100,13 @@ class DQNHead(nn.Module):
         self._head = _get_layer(
             layer_type=noise_type,
             input_dim=list(phi.parameters())[-1].shape[0],
-            output_dim=output_dim * support_dim,
+            output_dim=output_dim * self._support_dim,
             sigma_init=sigma_init)
         if dueling:
             self._value = _get_layer(
                 layer_type=noise_type,
                 input_dim=list(phi.parameters())[-1].shape[0],
-                output_dim=support_dim,
+                output_dim=self._support_dim,
                 sigma_init=sigma_init)
         if not self._enable_noise:
             self._initialize_variables()
@@ -133,9 +138,9 @@ class DQNHead(nn.Module):
     def _distributional_forward(self, x: torch.Tensor):
         out = self._head(x).view(-1, self._output_dim, self._support_dim)
         if self._dueling:
-            value = self._value(x).view(-1, 1, self._atoms_dim)
+            value = self._value(x).view(-1, 1, self._support_dim)
             out += (value - out.mean(dim=-1, keepdim=True))
-        if self._distribution_type == 'categotical':
+        if self._distribution_type == 'categorical':
             return F.softmax(out, dim=-1)
         return out
 
@@ -159,7 +164,7 @@ class MultiValueHead(nn.Module):
         super(MultiValueHead, self).__init__()
         if not isinstance(phi, tuple):
             phi = (phi,) * heads_num
-        self._heads = nn.ModuleList([ValueHead(phi[i], **kwargs)
+        self._heads = nn.ModuleList([ValueHead(copy.deepcopy(phi[i]), **kwargs)
                                      for i in range(heads_num)])
 
     def parameters(self, item: Optional[int] = None) -> Iterator[nn.Parameter]:
@@ -178,10 +183,7 @@ class MultiValueHead(nn.Module):
 
     def forward(self,
                 x: Tuple[torch.Tensor, ...],
-                train: bool = False,
-                unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
-        if unsqueeze:
-            return tuple([head(x, train).unsqueeze(1) for head in self._heads])
+                train: bool = False) -> Tuple[torch.Tensor, ...]:
         return tuple([head(x, train) for head in self._heads])
 
 
@@ -282,7 +284,6 @@ class GaussianPolicyHead(nn.Module):
                 x: torch.Tensor,
                 raw_action: Optional[torch.Tensor] = None,
                 deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
-        x = self._phi(x)
         mean = self._mean(x)
         if self._independend_std:
             log_std = self._log_std.expand_as(mean)
@@ -348,20 +349,13 @@ class GumbelSoftmaxPolicyHead(nn.Module):
             action = F.softmax(x, dim=-1).argmax()
         return action, log_prob
 
-
 if __name__ == '__main__':
     from yadrl.networks.bodies import MLPNetwork
 
-    v_limit = (-10.0, 10.0)
-    support_dim = 51
-
-    atoms = torch.linspace(v_limit[0], v_limit[1], support_dim).unsqueeze(0)
-    head = MultiDQNHead(
+    heads = GaussianActorCritic(
         phi=MLPNetwork(10, (64, 64)),
-        heads_num=4,
-        output_dim=8,
-        distribution_type='categorical',
-        support_dim=support_dim)
-    probs = torch.cat(head(torch.rand(1, 10), True, True), dim=1)
-    q_value = probs.mul(atoms.expand_as(probs)).sum(-1)
-    print(q_value.min())
+        output_dim=2,
+        squash=True,
+        independent_std=False
+    )
+

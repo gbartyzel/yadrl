@@ -1,3 +1,4 @@
+import copy
 from typing import NoReturn
 
 import numpy as np
@@ -18,7 +19,6 @@ class _SACBase(BaseOffPolicy):
     def __init__(self,
                  pi_module: nn.Module,
                  qv_module: nn.Module,
-                 target_qv_module: nn.Module,
                  pi_lrate: float,
                  qv_lrate: float,
                  temperature_lrate: float,
@@ -35,7 +35,7 @@ class _SACBase(BaseOffPolicy):
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
 
         self._qv = qv_module.to(self._device)
-        self._target_qv = target_qv_module.to(self._device)
+        self._target_qv = copy.deepcopy(qv_module).to(self._device)
         self._target_qv.load_state_dict(self._qv.state_dict())
         self._target_qv.eval()
         self._qv_optims = [optim.Adam(self._qv.parameters(item=i), qv_lrate)
@@ -124,25 +124,28 @@ class SACContinuous(_SACBase):
                  qv_phi: nn.Module, **kwargs):
         action_dim = kwargs['env'].action_space.shape[0]
         super(SACContinuous, self).__init__(
-            pi_module=GaussianPolicyHead(pi_phi, action_dim),
-            qv_module=MultiValueHead(qv_phi, heads_num=2),
-            target_qv_module=MultiValueHead(qv_phi, heads_num=2), **kwargs)
+            pi_module=GaussianPolicyHead(phi=pi_phi,
+                                         output_dim=action_dim,
+                                         independent_std=False,
+                                         squash=True),
+            qv_module=MultiValueHead(qv_phi, heads_num=2),  **kwargs)
 
     def _compute_loses(self, batch: Batch):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
         next_action, log_prob, _ = self._pi(next_state)
-        target_next_q = torch.min(*self._target_qv(next_state, next_action))
+        target_next_q = torch.min(
+            *self._target_qv((next_state, next_action), train=True))
         target_next_v = target_next_q - self._temperature * log_prob
         target_q = self._td_target(batch.reward, batch.mask,
                                    target_next_v).detach()
-        expected_qs = self._qv(state, batch.action)
+        expected_qs = self._qv((state, batch.action), train=True)
 
         qs_loss = (mse_loss(q, target_q) for q in expected_qs)
 
         action, log_prob, _ = self._pi(state)
-        target_log_prob = torch.min(*self._qv(state, action))
+        target_log_prob = torch.min(*self._qv((state, action), train=True))
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         if self._temperature_tuning:
@@ -165,9 +168,6 @@ class SACDiscrete(_SACBase):
         super(SACDiscrete, self).__init__(
             pi_module=GumbelSoftmaxPolicyHead(pi_phi, action_dim),
             qv_module=MultiDQNHead(
-                phi=qv_phi, heads_num=2, output_dim=action_dim,
-                dueling=dueling, noise_type=noise_type),
-            target_qv_module=MultiDQNHead(
                 phi=qv_phi, heads_num=2, output_dim=action_dim,
                 dueling=dueling, noise_type=noise_type), **kwargs)
 
