@@ -60,8 +60,8 @@ class ValueHead(nn.Module):
         self.reset_noise()
         if sample_noise:
             self.sample_noise()
-
-        out = self._valuex(x)
+        x = self._phi(x)
+        out = self._value(x)
         if self._distribution_type == 'none':
             return out
         else:
@@ -183,7 +183,10 @@ class MultiValueHead(nn.Module):
 
     def forward(self,
                 x: Tuple[torch.Tensor, ...],
-                train: bool = False) -> Tuple[torch.Tensor, ...]:
+                train: bool = False,
+                unsqueeze: bool = False) -> Tuple[torch.Tensor, ...]:
+        if unsqueeze:
+            return tuple(head(x, train).unsqueeze(1) for head in self._heads)
         return tuple([head(x, train) for head in self._heads])
 
 
@@ -284,6 +287,7 @@ class GaussianPolicyHead(nn.Module):
                 x: torch.Tensor,
                 raw_action: Optional[torch.Tensor] = None,
                 deterministic: bool = False) -> Tuple[torch.Tensor, ...]:
+        x = self._phi(x)
         mean = self._mean(x)
         if self._independend_std:
             log_std = self._log_std.expand_as(mean)

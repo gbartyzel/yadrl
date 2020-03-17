@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
-from yadrl.common.utils import mse_loss
 from yadrl.networks.heads import GaussianPolicyHead
 from yadrl.networks.heads import GumbelSoftmaxPolicyHead
 from yadrl.networks.heads import MultiDQNHead
@@ -24,8 +24,7 @@ class _SACBase(BaseOffPolicy):
                  temperature_lrate: float,
                  pi_grad_norm_value: float = 0.0,
                  qv_grad_norm_value: float = 0.0,
-                 temperature_tuning: bool = True,
-                 **kwargs):
+                 temperature_tuning: bool = True, **kwargs):
 
         super(_SACBase, self).__init__(**kwargs)
         self._pi_grad_norm_value = pi_grad_norm_value
@@ -128,7 +127,7 @@ class SACContinuous(_SACBase):
                                          output_dim=action_dim,
                                          independent_std=False,
                                          squash=True),
-            qv_module=MultiValueHead(qv_phi, heads_num=2),  **kwargs)
+            qv_module=MultiValueHead(phi=qv_phi, heads_num=2), **kwargs)
 
     def _compute_loses(self, batch: Batch):
         state = self._state_normalizer(batch.state)
@@ -138,11 +137,13 @@ class SACContinuous(_SACBase):
         target_next_q = torch.min(
             *self._target_qv((next_state, next_action), train=True))
         target_next_v = target_next_q - self._temperature * log_prob
-        target_q = self._td_target(batch.reward, batch.mask,
-                                   target_next_v).detach()
+        target_q = utils.td_target(reward=batch.reward,
+                                   mask=batch.mask,
+                                   next_value=target_next_v,
+                                   discount=self._discount).detach()
         expected_qs = self._qv((state, batch.action), train=True)
 
-        qs_loss = (mse_loss(q, target_q) for q in expected_qs)
+        qs_loss = (utils.mse_loss(q, target_q) for q in expected_qs)
 
         action, log_prob, _ = self._pi(state)
         target_log_prob = torch.min(*self._qv((state, action), train=True))
@@ -184,11 +185,12 @@ class SACDiscrete(_SACBase):
         target_next_q = torch.sum(target_next_q * next_action, -1, True)
 
         target_next_v = target_next_q - self._temperature * log_prob
-        target_q = self._td_target(reward=batch.reward,
+        target_q = utils.td_target(reward=batch.reward,
                                    mask=batch.mask,
-                                   next_value=target_next_v).detach()
+                                   next_value=target_next_v,
+                                   discount=self._discount).detach()
 
-        qs_loss = (mse_loss(q.gather(1, batch.action.long()), target_q)
+        qs_loss = (utils.mse_loss(q.gather(1, batch.action.long()), target_q)
                    for q in self._qv(state, True))
 
         action, log_prob = self._pi(state)

@@ -111,10 +111,10 @@ class DDPG(BaseOffPolicy):
     def _update_critic(self, batch: Batch):
         next_state = self._state_normalizer(batch.next_state, self._device)
         next_action = self._target_pi(next_state)
-        next_critic_output = self._target_qv(next_state, next_action).detach()
+        next_critic_output = self._target_qv((next_state, next_action)).detach()
 
-        loss = self._critic_loss_fn[self._distribution_type](batch,
-                                                             next_critic_output)
+        loss = self._critic_loss_fn[self._distribution_type](
+            batch, next_critic_output)
         self._qv_optim.zero_grad()
         loss.backward()
         if self._qv_grad_norm_value > 0.0:
@@ -145,7 +145,7 @@ class DDPG(BaseOffPolicy):
                                            v_limit=self._v_limit,
                                            discount=self._discount).detach()
 
-        probs = torch.clamp(self._qv(state, batch.action), 1e-7, 1.0)
+        probs = torch.clamp(self._qv((state, batch.action)), 1e-7, 1.0)
         loss = -(target_probs * probs.log()).sum(-1)
         return loss.mean()
 
@@ -168,7 +168,7 @@ class DDPG(BaseOffPolicy):
 
     def _update_actor(self, batch: Batch):
         state = self._state_normalizer(batch.state, self._device)
-        q_value = self._qv(state, self._pi(state))
+        q_value = self._qv((state, self._pi(state)))
 
         if self._distribution_type == 'categorical':
             q_value = q_value.mul(self._atoms.expand_as(q_value)).sum(-1)

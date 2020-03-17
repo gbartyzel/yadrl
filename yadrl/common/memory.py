@@ -82,25 +82,37 @@ class Rollout:
     def ready(self) -> int:
         return len(self._buffer) == self._buffer.maxlen
 
-    def get_transition(self,
-                       state: np.ndarray,
-                       action: np.ndarray,
-                       reward: Union[np.ndarray, float],
-                       next_state: np.ndarray,
-                       done: Union[np.ndarray, bool]) -> _TRANSITION:
+    def __call__(self,
+                 state: np.ndarray,
+                 action: np.ndarray,
+                 reward: Union[np.ndarray, float],
+                 next_state: np.ndarray,
+                 done: Union[np.ndarray, bool]) -> _TRANSITION:
         self._buffer.append((state, action, reward))
         if self.ready:
-            cum_reward = self._compute_cumulative_reward()
-            return (self._buffer[0][0], self._buffer[0][1], cum_reward,
-                    next_state, done)
+            if done:
+                transitions = list()
+                for _ in range(self._buffer.maxlen):
+                    transitions.append(self._get_transition(next_state, done))
+                    self._buffer.popleft()
+                return transitions
+            
+            return (self._get_transition(next_state, done),)
         return None
 
     def reset(self):
         self._buffer.clear()
 
+    def _get_transition(self,
+                        next_state: np.ndarray,
+                        done: Union[np.ndarray, bool]) -> _TRANSITION:
+        cum_reward = self._compute_cumulative_reward()
+        return self._buffer[0][0], self._buffer[0][1], cum_reward, next_state, done
+
+
     def _compute_cumulative_reward(self) -> float:
         cum_reward = 0
-        for t in range(self._buffer.maxlen):
+        for t in range(len(self._buffer)):
             cum_reward += self._discount_factor ** t * self._buffer[t][2]
         return cum_reward
 

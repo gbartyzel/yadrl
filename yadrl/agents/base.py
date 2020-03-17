@@ -134,11 +134,11 @@ class BaseOffPolicy(abc.ABC):
                  next_state: Union[np.ndarray, torch.Tensor],
                  done: Any):
         self._state_normalizer.update(state)
-        transition = self._rollout.get_transition(state, action, reward,
-                                                  next_state, done)
+        transition = self._rollout(state, action, reward, next_state, done)
         if transition is None:
             return
-        self._memory.push(*transition)
+        for t in transition:
+            self._memory.push(*t)
         if self._memory.size >= self._warm_up_steps:
             self._env_step += 1
             if self._env_step % self._update_frequency == 0:
