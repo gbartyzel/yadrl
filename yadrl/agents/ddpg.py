@@ -127,10 +127,11 @@ class DDPG(BaseOffPolicy):
                          batch: Batch,
                          target_next_q: torch.Tensor) -> torch.Tensor:
         state = self._state_normalizer(batch.state, self._device)
-        target_q = utils.td_target(reward=batch.reward,
-                                   mask=batch.mask,
-                                   next_value=target_next_q.view(-1, 1),
-                                   discount=self._discount).detach()
+        target_q = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=target_next_q.view(-1, 1),
+            discount=batch.discount_factor * self._discount).detach()
         expected_q = self._qv(state, batch.action)
         return utils.mse_loss(expected_q, target_q)
 
@@ -138,12 +139,15 @@ class DDPG(BaseOffPolicy):
                                   batch: Batch,
                                   next_probs: torch.Tensor) -> torch.Tensor:
         state = self._state_normalizer(batch.state, self._device)
-        target_probs = utils.l2_projection(next_probs=next_probs,
-                                           reward=batch.reward,
-                                           mask=batch.mask,
-                                           atoms=self._atoms,
-                                           v_limit=self._v_limit,
-                                           discount=self._discount).detach()
+        target_atoms = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=self._atoms,
+            discount=batch.discount_factor * self._discount)
+        target_probs = utils.l2_projection(
+            next_probs=next_probs,
+            atoms=self._atoms,
+            target_atoms=target_atoms).detach()
 
         probs = torch.clamp(self._qv((state, batch.action)), 1e-7, 1.0)
         loss = -(target_probs * probs.log()).sum(-1)
@@ -153,10 +157,11 @@ class DDPG(BaseOffPolicy):
                                batch: Batch,
                                next_quantiles: torch.Tensor) -> torch.Tensor:
         state = self._state_normalizer(batch.state, self._device)
-        target_quantiles = utils.td_target(reward=batch.reward,
-                                           mask=batch.mask,
-                                           next_value=next_quantiles,
-                                           discount=self._discount).detach()
+        target_quantiles = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=next_quantiles,
+            discount=batch.discount_factor * self._discount).detach()
 
         expected_quantiles = self._qv(state, batch.action)
 

@@ -1,3 +1,4 @@
+import copy
 import random
 from typing import NoReturn
 from typing import Tuple
@@ -18,7 +19,6 @@ class DQN(BaseOffPolicy):
                  phi: nn.Module,
                  learning_rate: float,
                  grad_norm_value: float,
-                 adam_eps: float,
                  epsilon_scheduler: BaseScheduler = BaseScheduler(),
                  v_limit: Tuple[float, float] = (-100.0, 100.0),
                  support_dim: int = 51,
@@ -38,20 +38,13 @@ class DQN(BaseOffPolicy):
         self._epsilon_scheduler = epsilon_scheduler
 
         self._qv = DQNHead(
-            phi=phi,
+            phi=copy.deepcopy(phi),
             output_dim=self._action_dim,
             support_dim=support_dim,
             distribution_type=distribution_type,
             dueling=use_dueling,
             noise_type=noise_type).to(self._device)
-        self._target_qv = DQNHead(
-            phi=phi,
-            output_dim=self._action_dim,
-            support_dim=support_dim,
-            distribution_type=distribution_type,
-            dueling=use_dueling,
-            noise_type=noise_type).to(self._device)
-        self._target_qv.load_state_dict(self._qv.state_dict())
+        self._target_qv = copy.deepcopy(self._qv).to(self._device)
         self._target_qv.eval()
 
         if distribution_type == 'categorical':
@@ -63,7 +56,7 @@ class DQN(BaseOffPolicy):
                 (np.arange(support_dim) + 0.5) / support_dim
             ).float().unsqueeze(0).to(self._device)
         self._optim = optim.Adam(self._qv.parameters(), lr=learning_rate,
-                                 eps=adam_eps)
+                                 eps=0.01 / self._batch_size)
 
     def _act(self, state: int, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
@@ -114,12 +107,13 @@ class DQN(BaseOffPolicy):
         else:
             target_next_q = target_next_q.max(1)[0].view(-1, 1)
 
-        target_q = utils.td_target(reward=batch.reward,
-                                   mask=batch.mask,
-                                   next_value=target_next_q,
-                                   discount=self._discount).detach()
+        target_q = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=target_next_q,
+            discount=batch.discount_factor * self._discount)
         expected_q = self._qv(state, True).gather(1, batch.action.long())
-        loss = utils.huber_loss(expected_q, target_q)
+        loss = utils.huber_loss(expected_q, target_q.detach())
 
         return loss
 
@@ -128,29 +122,29 @@ class DQN(BaseOffPolicy):
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         batch_vec = torch.arange(self._batch_size).long()
+
         next_probs = self._target_qv(next_state, True)
         exp_atoms = self._atoms.expand_as(next_probs)
-
         if self._use_double_q:
-            probs = self._qv(next_state, True)
-            next_q = probs.mul(exp_atoms).sum(-1)
+            next_q = self._qv(next_state, True).mul(exp_atoms).sum(-1)
         else:
             next_q = next_probs.mul(exp_atoms).sum(-1)
         next_action = next_q.argmax(-1).long()
 
         next_probs = next_probs[batch_vec, next_action, :]
-        target_probs = utils.l2_projection(next_probs=next_probs,
-                                           reward=batch.reward,
-                                           mask=batch.mask,
-                                           atoms=self._atoms,
-                                           v_limit=self._v_limit,
-                                           discount=self._discount).detach()
+        target_atoms = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=self._atoms,
+            discount=batch.discount_factor * self._discount)
+        target_probs = utils.l2_projection(
+            next_probs=next_probs,
+            atoms=self._atoms,
+            target_atoms=target_atoms).detach()
         action = batch.action.squeeze().long()
-        probs = self._qv(state, True)[batch_vec, action, :]
-        probs = torch.clamp(probs, 1e-7, 1.0)
-        loss = -(target_probs * probs.log()).sum(-1)
-
-        return loss.mean()
+        log_probs = self._qv(state, True, True)[batch_vec, action, :]
+        loss = torch.mean(-(target_probs * log_probs).sum(-1))
+        return loss
 
     def _compute_quantile_loss(self, batch):
         state = self._state_normalizer(batch.state, self._device)
@@ -165,9 +159,11 @@ class DQN(BaseOffPolicy):
         next_action = next_q.argmax(-1).long()
 
         next_quantiles = next_quantiles[batch_vec, next_action, :]
-        target_quantiles = self._td_target(reward=batch.reward,
-                                           mask=batch.mask,
-                                           next_value=next_quantiles).detach()
+        target_quantiles = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=next_quantiles,
+            discount=batch.discount_factor * self._discount)
 
         action = batch.action.long().squeeze()
         expected_quantiles = self._qv(state, True)
@@ -175,7 +171,7 @@ class DQN(BaseOffPolicy):
 
         loss = utils.quantile_hubber_loss(
             prediction=expected_quantiles,
-            target=target_quantiles,
+            target=target_quantiles.detach(),
             cumulative_density=self._cumulative_density)
 
         return loss

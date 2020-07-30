@@ -137,10 +137,11 @@ class SACContinuous(_SACBase):
         target_next_q = torch.min(
             *self._target_qv((next_state, next_action), train=True))
         target_next_v = target_next_q - self._temperature * log_prob
-        target_q = utils.td_target(reward=batch.reward,
-                                   mask=batch.mask,
-                                   next_value=target_next_v,
-                                   discount=self._discount).detach()
+        target_q = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=target_next_v,
+            discount=batch.discount_factor * self._discount).detach()
         expected_qs = self._qv((state, batch.action), train=True)
 
         qs_loss = (utils.mse_loss(q, target_q) for q in expected_qs)
@@ -185,10 +186,11 @@ class SACDiscrete(_SACBase):
         target_next_q = torch.sum(target_next_q * next_action, -1, True)
 
         target_next_v = target_next_q - self._temperature * log_prob
-        target_q = utils.td_target(reward=batch.reward,
-                                   mask=batch.mask,
-                                   next_value=target_next_v,
-                                   discount=self._discount).detach()
+        target_q = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=target_next_v,
+            discount=batch.discount_factor * self._discount).detach()
 
         qs_loss = (utils.mse_loss(q.gather(1, batch.action.long()), target_q)
                    for q in self._qv(state, True))

@@ -120,28 +120,32 @@ class DQNHead(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                sample_noise: bool = False):
+                sample_noise: bool = False,
+                log_prob: bool = False) -> torch.Tensor:
         x = self._phi(x)
         self.reset_noise()
         if sample_noise:
             self.sample_noise()
         if self._distribution_type != 'none':
-            return self._distributional_forward(x)
+            return self._distributional_forward(x, log_prob)
         return self._forward(x)
 
-    def _forward(self, x: torch.Tensor):
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self._head(x)
         if self._dueling:
-            out += (self._value(x) - out.mean(dim=1, keepdim=True))
+            value = self._value(x)
+            out += value - out.mean(dim=1, keepdim=True)
         return out
 
-    def _distributional_forward(self, x: torch.Tensor):
+    def _distributional_forward(self,
+                                x: torch.Tensor,
+                                log_prob: bool) -> torch.Tensor:
         out = self._head(x).view(-1, self._output_dim, self._support_dim)
         if self._dueling:
             value = self._value(x).view(-1, 1, self._support_dim)
             out += (value - out.mean(dim=-1, keepdim=True))
         if self._distribution_type == 'categorical':
-            return F.softmax(out, dim=-1)
+            return F.log_softmax(out, -1) if log_prob else F.softmax(out, -1)
         return out
 
     def sample_noise(self):
@@ -353,6 +357,7 @@ class GumbelSoftmaxPolicyHead(nn.Module):
             action = F.softmax(x, dim=-1).argmax()
         return action, log_prob
 
+
 if __name__ == '__main__':
     from yadrl.networks.bodies import MLPNetwork
 
@@ -362,4 +367,3 @@ if __name__ == '__main__':
         squash=True,
         independent_std=False
     )
-

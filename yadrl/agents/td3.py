@@ -6,10 +6,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
-from yadrl.common.utils import mse_loss
 from yadrl.networks.heads import DeterministicPolicyHead
 from yadrl.networks.heads import MultiValueHead
 
@@ -92,11 +92,15 @@ class TD3(BaseOffPolicy):
 
         target_next_qs = self._target_qv(next_state, next_action)
         target_next_q = torch.min(*target_next_qs).view(-1, 1)
-        target_q = self._td_target(batch.reward, batch.mask,
-                                   target_next_q).detach()
+        target_q = utils.td_target(
+            reward=batch.reward,
+            mask=batch.mask,
+            target=target_next_q,
+            discount=batch.discount_factor * self._discount).detach()
         expected_q1, expected_q2 = self._qv(state, batch.action)
 
-        loss = mse_loss(expected_q1, target_q) + mse_loss(expected_q2, target_q)
+        loss = utils.mse_loss(expected_q1, target_q) + \
+               utils.mse_loss(expected_q2, target_q)
 
         self._qv_optim.zero_grad()
         loss.backward()

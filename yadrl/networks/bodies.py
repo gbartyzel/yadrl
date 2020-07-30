@@ -8,6 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from yadrl.networks.noisy_linear import FactorizedNoisyLinear
+from yadrl.networks.noisy_linear import IndependentNoisyLinear
+
 
 def fan_init(x: nn.Parameter):
     size = x.data.size()[1]
@@ -57,6 +60,47 @@ class MLPNetwork(BaseMLPNetwork):
             orthogonal_init(layer)
 
     def forward(self, x: Sequence[torch.Tensor]) -> torch.Tensor:
+        if isinstance(x, tuple):
+            x = torch.cat(x, dim=1)
+        for layer in self._body:
+            x = self._activation_fn(layer(x))
+        return x
+
+
+class NoisyMlpNetwork(BaseMLPNetwork):
+    layer_fn = {'factorized': FactorizedNoisyLinear,
+             'independent': IndependentNoisyLinear}
+
+    def __init__(self,
+                 input_dim: Union[int, Tuple[int, ...]],
+                 hidden_dim: Tuple[int, ...],
+                 activation_fn: nn.Module = F.relu,
+                 noise_type: str = 'factorized',
+                 sigma_init: float = 0.5):
+        super().__init__(input_dim, hidden_dim[-1], activation_fn)
+        self._size = len(hidden_dim)
+
+        self._body = nn.ModuleList()
+        layers = (input_dim,) + hidden_dim
+        for i in range(self._size):
+            self._body.append(
+                self.layer_fn[noise_type](layers[i], layers[i + 1], sigma_init))
+
+    def sample_noise(self):
+        for layer in self._body:
+            layer.sample_noise()
+
+    def reset_noise(self):
+        for layer in self._body:
+            layer.reset_noise()
+
+    def forward(self,
+                x: Sequence[torch.Tensor],
+                sample_noise: bool = False) -> torch.Tensor:
+        self.reset_noise()
+        if sample_noise:
+            self.sample_noise()
+
         if isinstance(x, tuple):
             x = torch.cat(x, dim=1)
         for layer in self._body:

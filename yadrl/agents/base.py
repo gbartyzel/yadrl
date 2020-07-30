@@ -56,7 +56,7 @@ class BaseOffPolicy(abc.ABC):
         else:
             self._action_dim = self._env.action_space.n
 
-        self._discount = discount_factor ** n_step
+        self._discount = discount_factor
         self._n_step = n_step
         self._reward_scaling = reward_scaling
 
@@ -159,12 +159,6 @@ class BaseOffPolicy(abc.ABC):
         for param, t_param in zip(params, target_params):
             t_param.data.copy_(
                 t_param.data * (1.0 - self._polyak) + param.data * self._polyak)
-
-    def _td_target(self,
-                   reward: torch.Tensor,
-                   mask: torch.Tensor,
-                   next_value: torch.Tensor) -> torch.Tensor:
-        return reward + mask * self._discount * next_value
 
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):
