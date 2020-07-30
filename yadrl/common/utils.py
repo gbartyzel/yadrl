@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Tuple
 
 import torch
 
@@ -27,7 +26,7 @@ def huber_loss(prediction: torch.Tensor,
                delta: float = 1.0,
                reduction: str = 'mean') -> torch.Tensor:
     error = target - prediction
-    loss = torch.where(torch.abs(   error) <= delta,
+    loss = torch.where(torch.abs(error) <= delta,
                        0.5 * error.pow(2),
                        delta * (error.abs() - 0.5 * delta))
     if reduction == 'mean':
