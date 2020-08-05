@@ -38,7 +38,7 @@ class DQN(BaseOffPolicy):
 
     def _build_head(self, phi, noise_type, use_dueling):
         head = DuelingDQNHead if use_dueling else DQNHead
-        return head(phi=copy.deepcopy(phi),
+        return head(phi=phi,
                     output_dim=self._action_dim,
                     noise_type=noise_type).to(self._device)
 
@@ -76,12 +76,13 @@ class DQN(BaseOffPolicy):
         state = self._state_normalizer(batch.state, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
-        target_next_q = self._target_qv(next_state, True)
-        if self._use_double_q:
-            next_action = self._qv(next_state, True).argmax(1).view(-1, 1)
-            target_next_q = target_next_q.gather(1, next_action)
-        else:
-            target_next_q = target_next_q.max(1)[0].view(-1, 1)
+        with torch.no_grad():
+            target_next_q = self._target_qv(next_state, True).detach()
+            if self._use_double_q:
+                next_action = self._qv(next_state, True).argmax(1, True)
+                target_next_q = target_next_q.gather(1, next_action)
+            else:
+                target_next_q = target_next_q.max(1)[0].view(-1, 1)
 
         target_q = utils.td_target(
             reward=batch.reward,
@@ -89,8 +90,7 @@ class DQN(BaseOffPolicy):
             target=target_next_q,
             discount=batch.discount_factor * self._discount)
         expected_q = self._qv(state, True).gather(1, batch.action.long())
-        loss = utils.huber_loss(expected_q, target_q.detach())
-
+        loss = utils.huber_loss(expected_q, target_q)
         return loss
 
     def load(self, path: str) -> NoReturn:

@@ -1,12 +1,4 @@
-from enum import Enum
-
 import torch
-
-
-class Reduction(Enum):
-    NONE = 0
-    MEAN = 1
-    SUM = 2
 
 
 def mse_loss(prediction: torch.Tensor,
@@ -74,19 +66,3 @@ def l2_projection(next_probs: torch.Tensor,
     target_probs = (1.0 - (target_atoms - atoms).abs() / z_delta).clamp(0, 1)
     target_probs *= next_probs
     return target_probs.sum(0)
-    """
-    target_probs = torch.zeros(next_probs.shape, device=next_probs.device)
-
-    bj = (target_atoms- v_min) / z_delta
-    l = bj.floor()
-    u = bj.ceil()
-
-    delta_l_prob = next_probs * (u + (u == l).float() - bj)
-    delta_u_prob = next_probs * (bj - l)
-
-    for i in range(next_probs.shape[0]):
-        target_probs[i].index_add_(0, l[i].long(), delta_l_prob[i])
-        target_probs[i].index_add_(0, u[i].long(), delta_u_prob[i])
-
-    return target_probs
-    """

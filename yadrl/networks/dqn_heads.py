@@ -106,7 +106,7 @@ class DuelingDQNHead(DQNHead):
 
     def _initialize_variables(self):
         super()._initialize_variables()
-        if self._enable_noise:
+        if not self._enable_noise and hasattr(self, '_value'):
             self._value.weight.data.uniform_(-3e-3, 3e-3)
             self._value.bias.data.uniform_(-3e-3, 3e-3)
 
@@ -118,10 +118,10 @@ class DuelingDQNHead(DQNHead):
         if sample_noise:
             self.sample_noise()
         x = self._phi(x)
+        # x = scale_gradient(x, 2 ** (-1 / 2))
         out = self._head(x)
-        if self._dueling:
-            value = self._value(x)
-            out += value - out.mean(dim=1, keepdim=True)
+        value = self._value(x)
+        out += value - out.mean(dim=1, keepdim=True)
         return out
 
     def sample_noise(self):
@@ -162,9 +162,8 @@ class QuantileDuelingDQNHead(DQNHead):
             self.sample_noise()
         x = self._phi(x)
         out = self._head(x).view(-1, self._output_dim, self._support_dim)
-        if self._dueling:
-            value = self._value(x).view(-1, 1, self._support_dim)
-            out += (value - out.mean(dim=-1, keepdim=True))
+        value = self._value(x).view(-1, 1, self._support_dim)
+        out += (value - out.mean(dim=-1, keepdim=True))
         return out
 
 
@@ -202,8 +201,16 @@ class DoubleDQNHead(nn.Module):
         return self._head_2.parameters()
 
 
-if __name__ == '__main__':
-    from yadrl.networks.bodies import MLPNetwork
+class GradScaler(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, scale):
+        ctx.scale = scale
+        return input
 
-    head = DoubleDQNHead(MLPNetwork(4, (32, 32)), 6)
-    print(head.parameters())
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_input = grad_output.clone()
+        return grad_input * ctx.scale, None
+
+
+scale_gradient = GradScaler.apply

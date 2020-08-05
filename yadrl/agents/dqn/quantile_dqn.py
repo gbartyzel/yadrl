@@ -10,11 +10,11 @@ from yadrl.networks.dqn_heads import QuantileDQNHead, QuantileDuelingDQNHead
 
 class QuantileDQN(DQN):
     def __init__(self, support_dim: int = 51, **kwargs):
+        self._support_dim = support_dim
+        super().__init__(**kwargs)
         self._cumulative_density = torch.from_numpy(
             (np.arange(support_dim) + 0.5) / support_dim
         ).float().unsqueeze(0).to(self._device)
-        self._support_dim = support_dim
-        super(DQN, self).__init__(**kwargs)
 
     def _build_head(self, phi, noise_type, use_dueling):
         head = QuantileDuelingDQNHead if use_dueling else QuantileDQNHead
@@ -31,14 +31,15 @@ class QuantileDQN(DQN):
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         batch_vec = torch.arange(self._batch_size).long()
-        next_quantiles = self._target_qv(next_state, True)
-        if self._use_double_q:
-            next_q = self._qv(next_state, True).mean(-1)
-        else:
-            next_q = next_quantiles.mean(-1)
-        next_action = next_q.argmax(-1).long()
+        with torch.no_grad():
+            next_quantiles = self._target_qv(next_state, True).detach()
+            if self._use_double_q:
+                next_q = self._qv(next_state, True).mean(-1)
+            else:
+                next_q = next_quantiles.mean(-1)
+            next_action = next_q.argmax(-1).long()
+            next_quantiles = next_quantiles[batch_vec, next_action, :]
 
-        next_quantiles = next_quantiles[batch_vec, next_action, :]
         target_quantiles = utils.td_target(
             reward=batch.reward,
             mask=batch.mask,

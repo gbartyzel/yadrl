@@ -1,9 +1,7 @@
 import abc
 import datetime
 import os
-from typing import Any
-from typing import Tuple
-from typing import Union
+from typing import Any, Tuple, Union
 
 import gym
 import numpy as np
@@ -14,8 +12,7 @@ from gym.spaces.box import Box
 from torch.utils.tensorboard import SummaryWriter
 
 import yadrl.common.normalizer as normalizer
-from yadrl.common.memory import ReplayMemory
-from yadrl.common.memory import Rollout
+from yadrl.common.memory import ReplayMemory, Rollout
 
 
 class BaseOffPolicy(abc.ABC):
@@ -152,7 +149,8 @@ class BaseOffPolicy(abc.ABC):
         if self._use_soft_update:
             self._soft_update(model.parameters(), target_model.parameters())
         else:
-            if self._optimizer_step % self._target_update_frequency == 0:
+            if self._env_step / self._update_frequency \
+                    % self._target_update_frequency == 0:
                 target_model.load_state_dict(model.state_dict())
 
     def _soft_update(self, params: nn.parameter, target_params: nn.parameter):
