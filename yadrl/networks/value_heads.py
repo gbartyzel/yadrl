@@ -48,7 +48,8 @@ class ValueHead(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                sample_noise: bool = False) -> torch.Tensor:
+                sample_noise: bool = False,
+                **kwargs) -> torch.Tensor:
         self.reset_noise()
         if sample_noise:
             self.sample_noise()
@@ -80,7 +81,8 @@ class QuantileValueHead(ValueHead):
 
     def forward(self,
                 x: torch.Tensor,
-                sample_noise: bool = False) -> torch.Tensor:
+                sample_noise: bool = False,
+                **kwargs) -> torch.Tensor:
         out = super().forward(x, sample_noise)
         return out.view(-1, self._support_dim)
 

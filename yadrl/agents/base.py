@@ -168,7 +168,7 @@ class BaseOffPolicy(abc.ABC):
         np.random.seed(seed)
 
     def _log(self, reward):
-        self._writer.add_scalar('reward', reward, self._env_step)
+        self._writer.add_scalar('train/reward', reward, self._env_step)
         for k, v in self._data_to_log.items():
             self._writer.add_scalar(k, v, self._env_step)
         for name, param in self.parameters:
