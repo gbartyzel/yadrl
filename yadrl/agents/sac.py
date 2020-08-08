@@ -9,10 +9,10 @@ import torch.optim as optim
 import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicy
 from yadrl.common.memory import Batch
-from yadrl.networks.heads import GaussianPolicyHead
-from yadrl.networks.heads import GumbelSoftmaxPolicyHead
-from yadrl.networks.heads import MultiDQNHead
-from yadrl.networks.heads import MultiValueHead
+from yadrl.networks.dqn_heads import DoubleDQNHead
+from yadrl.networks.policy_heads import (GaussianPolicyHead,
+                                         GumbelSoftmaxPolicyHead, )
+from yadrl.networks.value_heads import DoubleValueHead
 
 
 class _SACBase(BaseOffPolicy):
@@ -127,7 +127,7 @@ class SACContinuous(_SACBase):
                                          output_dim=action_dim,
                                          independent_std=False,
                                          squash=True),
-            qv_module=MultiValueHead(phi=qv_phi, heads_num=2), **kwargs)
+            qv_module=DoubleValueHead(phi=qv_phi), **kwargs)
 
     def _compute_loses(self, batch: Batch):
         state = self._state_normalizer(batch.state)
@@ -164,14 +164,13 @@ class SACDiscrete(_SACBase):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
-                 dueling: bool = False,
                  noise_type: str = 'none', **kwargs):
         action_dim = kwargs['env'].action_space.n
         super(SACDiscrete, self).__init__(
             pi_module=GumbelSoftmaxPolicyHead(pi_phi, action_dim),
-            qv_module=MultiDQNHead(
-                phi=qv_phi, heads_num=2, output_dim=action_dim,
-                dueling=dueling, noise_type=noise_type), **kwargs)
+            qv_module=DoubleDQNHead(
+                phi=qv_phi, output_dim=action_dim,
+                noise_type=noise_type), **kwargs)
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         return super()._act(state, train).argmax()
