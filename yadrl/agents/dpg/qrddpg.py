@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 import yadrl.common.utils as utils
-from yadrl.agents.q_policy_gradient.ddpg import DDPG
+from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
 from yadrl.networks.value_heads import QuantileValueHead
 
@@ -39,8 +39,9 @@ class QuantileDDPG(DDPG):
         next_state = self._state_normalizer(batch.next_state, self._device)
         state = self._state_normalizer(batch.state, self._device)
 
-        next_action = self._target_pi(next_state)
-        next_quantiles = self._target_qv((next_state, next_action)).detach()
+        with torch.no_grad():
+            next_action = self._target_pi(next_state)
+            next_quantiles = self._target_qv((next_state, next_action))
         target_quantiles = utils.td_target(
             reward=batch.reward,
             mask=batch.mask,

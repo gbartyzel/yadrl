@@ -25,11 +25,13 @@ class DDPG(BaseOffPolicy):
                  l2_reg_value: float = 0.01,
                  pi_grad_norm_value: float = 0.0,
                  qv_grad_norm_value: float = 0.0,
+                 policy_update_frequency: int = 2,
                  **kwargs):
         super().__init__(**kwargs)
         assert np.shape(action_limit) == (2,), "Wrong action limit!"
 
         self._action_limit = action_limit
+        self._policy_update_frequency = policy_update_frequency
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qv_grad_norm_value = qv_grad_norm_value
 
@@ -92,9 +94,11 @@ class DDPG(BaseOffPolicy):
     def _update(self):
         batch = self._memory.sample(self._batch_size)
         self._update_critic(batch)
-        self._update_actor(batch)
-        self._update_target(self._pi, self._target_pi)
-        self._update_target(self._qv, self._target_qv)
+        if self._env_step % (self._policy_update_frequency *
+                             self._update_frequency) == 0:
+            self._update_actor(batch)
+            self._update_target(self._pi, self._target_pi)
+            self._update_target(self._qv, self._target_qv)
 
     def _update_critic(self, batch: Batch):
         loss = self._compute_loss(batch)
@@ -112,7 +116,7 @@ class DDPG(BaseOffPolicy):
 
         with torch.no_grad():
             next_action = self._target_pi(next_state).detach()
-            target_next_q = self._target_qv((next_state, next_action)).detach()
+            target_next_q = self._target_qv((next_state, next_action))
 
         target_q = utils.td_target(
             reward=batch.reward,

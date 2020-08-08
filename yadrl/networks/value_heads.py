@@ -99,12 +99,12 @@ class CategoricalValueHead(QuantileValueHead):
         return F.log_softmax(x, -1) if log_prob else F.softmax(x, -1)
 
 
-class MultiValueHead(nn.Module):
+class DoubleValueHead(nn.Module):
     def __init__(self,
                  phi: Union[nn.Module, Tuple[nn.Module]],
                  noise_type: str = 'none',
                  sigma_init: float = 0.5):
-        super(MultiValueHead, self).__init__()
+        super().__init__()
         self._head_1 = ValueHead(deepcopy(phi), noise_type, sigma_init)
         self._head_2 = ValueHead(deepcopy(phi), noise_type, sigma_init)
 
@@ -112,6 +112,16 @@ class MultiValueHead(nn.Module):
                 x: Tuple[torch.Tensor, ...],
                 sample_noise: bool = False) -> Tuple[torch.Tensor, ...]:
         return self._head_1(x, sample_noise), self._head_2(x, sample_noise)
+
+    def eval_head_1(self,
+                    x: torch.Tensor,
+                    sample_noise: bool = False) -> torch.Tensor:
+        return self._head_1(x, sample_noise)
+
+    def eval_head_2(self,
+                    x: Tuple[torch.Tensor, ...],
+                    sample_noise: bool = False) -> torch.Tensor:
+        return self._head_2(x, sample_noise)
 
     def head_1_parameters(self):
         return self._head_1.parameters()
