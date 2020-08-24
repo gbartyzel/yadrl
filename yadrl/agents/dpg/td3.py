@@ -4,7 +4,7 @@ import yadrl.common.utils as utils
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
-from yadrl.networks.value_heads import DoubleValueHead
+from yadrl.networks.heads.value import DoubleValueHead
 
 
 class TD3(DDPG):

@@ -9,8 +9,8 @@ import torch.optim as optim
 import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicyAgent
 from yadrl.common.memory import Batch
-from yadrl.networks.policy_heads import GaussianPolicyHead
-from yadrl.networks.value_heads import DoubleValueHead
+from yadrl.networks.heads.policy import GaussianPolicyHead
+from yadrl.networks.heads.value import DoubleValueHead
 
 
 class SAC(BaseOffPolicyAgent):

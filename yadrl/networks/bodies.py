@@ -3,26 +3,13 @@ from typing import Sequence
 from typing import Tuple
 from typing import Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from yadrl.networks.commons import fan_init, orthogonal_init
 from yadrl.networks.noisy_linear import FactorizedNoisyLinear
 from yadrl.networks.noisy_linear import IndependentNoisyLinear
-
-
-def fan_init(x: nn.Parameter):
-    size = x.data.size()[1]
-    val = 1 / np.sqrt(size)
-    return -val, val
-
-
-def orthogonal_init(x: nn.Module):
-    classname = x.__class__.__name__
-    if classname.find('Linear') != -1:
-        nn.init.orthogonal_(x.weight.data, gain=np.sqrt(2))
-        nn.init.constant_(x.bias.data, 0.0)
 
 
 class BaseMLPNetwork(nn.Module):
@@ -69,7 +56,7 @@ class MLPNetwork(BaseMLPNetwork):
 
 class NoisyMlpNetwork(BaseMLPNetwork):
     layer_fn = {'factorized': FactorizedNoisyLinear,
-             'independent': IndependentNoisyLinear}
+                'independent': IndependentNoisyLinear}
 
     def __init__(self,
                  input_dim: Union[int, Tuple[int, ...]],

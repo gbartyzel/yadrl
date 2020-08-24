@@ -5,19 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from yadrl.networks.noisy_linear import (FactorizedNoisyLinear,
-                                         IndependentNoisyLinear, )
-
-
-def _get_layer(layer_type, input_dim, output_dim, sigma_init):
-    if layer_type == 'none':
-        return nn.Linear(input_dim, output_dim)
-    elif layer_type == 'factorized':
-        return FactorizedNoisyLinear(input_dim, output_dim, sigma_init)
-    elif layer_type == 'independent':
-        return IndependentNoisyLinear(input_dim, output_dim, sigma_init)
-    raise ValueError(
-        'Wrong layer type, choose between: none, factorized, independent')
+from yadrl.networks.commons import get_layer
 
 
 class ValueHead(nn.Module):
@@ -36,10 +24,10 @@ class ValueHead(nn.Module):
                      input_dim: int,
                      layer_type: str,
                      sigma_init: float) -> nn.Module:
-        return _get_layer(layer_type=layer_type,
-                          input_dim=input_dim,
-                          output_dim=1,
-                          sigma_init=sigma_init)
+        return get_layer(layer_type=layer_type,
+                         input_dim=input_dim,
+                         output_dim=1,
+                         sigma_init=sigma_init)
 
     def _initialize_variables(self):
         if not self._enable_noise:
@@ -74,10 +62,10 @@ class QuantileValueHead(ValueHead):
                      input_dim: int,
                      layer_type: str,
                      sigma_init: float) -> nn.Module:
-        return _get_layer(layer_type=layer_type,
-                          input_dim=input_dim,
-                          output_dim=self._support_dim,
-                          sigma_init=sigma_init)
+        return get_layer(layer_type=layer_type,
+                         input_dim=input_dim,
+                         output_dim=self._support_dim,
+                         sigma_init=sigma_init)
 
     def forward(self,
                 x: torch.Tensor,

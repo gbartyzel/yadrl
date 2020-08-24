@@ -10,8 +10,8 @@ import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicyAgent
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
-from yadrl.networks.policy_heads import DeterministicPolicyHead
-from yadrl.networks.value_heads import ValueHead
+from yadrl.networks.heads.policy import DeterministicPolicyHead
+from yadrl.networks.heads.value import ValueHead
 
 
 class DDPG(BaseOffPolicyAgent):

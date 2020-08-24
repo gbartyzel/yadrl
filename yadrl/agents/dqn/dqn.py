@@ -10,7 +10,7 @@ import torch.optim as optim
 import yadrl.common.utils as utils
 from yadrl.agents.base import BaseOffPolicyAgent
 from yadrl.common.scheduler import BaseScheduler
-from yadrl.networks.dqn_heads import DQNHead, DuelingDQNHead
+from yadrl.networks.heads.dqn import DQNHead, DuelingDQNHead
 
 
 class DQN(BaseOffPolicyAgent):

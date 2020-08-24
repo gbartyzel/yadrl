@@ -5,19 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from yadrl.networks.noisy_linear import (FactorizedNoisyLinear,
-                                         IndependentNoisyLinear, )
-
-
-def _get_layer(layer_type, input_dim, output_dim, sigma_init):
-    if layer_type == 'none':
-        return nn.Linear(input_dim, output_dim)
-    elif layer_type == 'factorized':
-        return FactorizedNoisyLinear(input_dim, output_dim, sigma_init)
-    elif layer_type == 'independent':
-        return IndependentNoisyLinear(input_dim, output_dim, sigma_init)
-    raise ValueError(
-        'Wrong layer type, choose between: none, factorized, independent')
+from yadrl.networks.commons import get_layer
 
 
 class DQNHead(nn.Module):
@@ -31,7 +19,7 @@ class DQNHead(nn.Module):
         self._enable_noise = noise_type != 'none'
 
         self._phi = phi
-        self._head = _get_layer(
+        self._head = get_layer(
             layer_type=noise_type,
             input_dim=list(phi.parameters())[-1].shape[0],
             output_dim=output_dim,
@@ -97,7 +85,7 @@ class DuelingDQNHead(DQNHead):
                  noise_type: str = 'none',
                  sigma_init: float = 0.5):
         super().__init__(phi, output_dim, noise_type, sigma_init)
-        self._value = _get_layer(
+        self._value = get_layer(
             layer_type=noise_type,
             input_dim=list(phi.parameters())[-1].shape[0],
             output_dim=1,
@@ -146,7 +134,7 @@ class QuantileDuelingDQNHead(DQNHead):
         self._output_dim = output_dim
         self._support_dim = support_dim
 
-        self._value = _get_layer(
+        self._value = get_layer(
             layer_type=noise_type,
             input_dim=list(phi.parameters())[-1].shape[0],
             output_dim=support_dim,

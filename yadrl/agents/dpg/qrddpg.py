@@ -4,7 +4,7 @@ import torch
 import yadrl.common.utils as utils
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
-from yadrl.networks.value_heads import QuantileValueHead
+from yadrl.networks.heads.value import QuantileValueHead
 
 
 class QuantileDDPG(DDPG):

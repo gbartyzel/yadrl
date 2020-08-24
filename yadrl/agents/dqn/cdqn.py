@@ -5,7 +5,7 @@ import torch
 
 import yadrl.common.utils as utils
 from yadrl.agents.dqn.dqn import DQN
-from yadrl.networks.dqn_heads import (CategoricalDQNHead,
+from yadrl.networks.heads.dqn import (CategoricalDQNHead,
                                       CategoricalDuelingDQNHead, )
 
 

@@ -4,8 +4,8 @@ import torch
 import yadrl.common.utils as utils
 from yadrl.agents.sac.sac import SAC
 from yadrl.common.memory import Batch
-from yadrl.networks.dqn_heads import DoubleDQNHead
-from yadrl.networks.policy_heads import GumbelSoftmaxPolicyHead
+from yadrl.networks.heads.dqn import DoubleDQNHead
+from yadrl.networks.heads.policy import GumbelSoftmaxPolicyHead
 
 
 class SACDiscrete(SAC):

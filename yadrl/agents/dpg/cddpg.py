@@ -5,7 +5,7 @@ import torch
 import yadrl.common.utils as utils
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
-from yadrl.networks.value_heads import CategoricalValueHead
+from yadrl.networks.heads.value import CategoricalValueHead
 
 
 class CategoricalDDPG(DDPG):
