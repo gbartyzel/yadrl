@@ -15,7 +15,7 @@ from yadrl.networks.policy_heads import (GaussianPolicyHead,
 from yadrl.networks.value_heads import DoubleValueHead
 
 
-class _SACBase(BaseOffPolicy):
+class SAC(BaseOffPolicy):
     def __init__(self,
                  pi_module: nn.Module,
                  qv_module: nn.Module,
@@ -26,7 +26,7 @@ class _SACBase(BaseOffPolicy):
                  qv_grad_norm_value: float = 0.0,
                  temperature_tuning: bool = True, **kwargs):
 
-        super(_SACBase, self).__init__(**kwargs)
+        super(SAC, self).__init__(**kwargs)
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qvs_grad_norm_value = qv_grad_norm_value
 
@@ -117,7 +117,7 @@ class _SACBase(BaseOffPolicy):
         return self._target_qv.named_parameters()
 
 
-class SACContinuous(_SACBase):
+class SACContinuous(SAC):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module, **kwargs):
@@ -160,7 +160,7 @@ class SACContinuous(_SACBase):
         return qs_loss, policy_loss, temperature_loss
 
 
-class SACDiscrete(_SACBase):
+class SACDiscrete(SAC):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
