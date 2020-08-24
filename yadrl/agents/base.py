@@ -15,7 +15,7 @@ import yadrl.common.normalizer as normalizer
 from yadrl.common.memory import ReplayMemory, Rollout
 
 
-class BaseOffPolicy(abc.ABC):
+class BaseOffPolicyAgent(abc.ABC):
     def __init__(self,
                  env: gym.Env,
                  discount_factor: float = 0.99,
@@ -34,7 +34,7 @@ class BaseOffPolicy(abc.ABC):
                  state_norm_clip: Tuple[float, float] = (-5.0, 5.0),
                  logdir: str = './output',
                  seed: int = 1337):
-        super(BaseOffPolicy, self).__init__()
+        super(BaseOffPolicyAgent, self).__init__()
         self._env = env
         self._state = None
         self._env_step = 0
@@ -194,6 +194,14 @@ class BaseOffPolicy(abc.ABC):
 
     @abc.abstractmethod
     def _update(self):
+        return NotImplementedError
+
+    @abc.abstractmethod
+    def _initialize_online_networks(self, *args, **kwargs):
+        return NotImplementedError
+
+    @abc.abstractmethod
+    def _initialize_target_networks(self):
         return NotImplementedError
 
     @abc.abstractmethod

@@ -7,13 +7,14 @@ import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.utils as utils
-from yadrl.agents.base import BaseOffPolicy
+from yadrl.agents.base import BaseOffPolicyAgent
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
-from yadrl.networks.policy_heads import DeterministicPolicyHead, ValueHead
+from yadrl.networks.policy_heads import DeterministicPolicyHead
+from yadrl.networks.value_heads import ValueHead
 
 
-class DDPG(BaseOffPolicy):
+class DDPG(BaseOffPolicyAgent):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
@@ -35,8 +36,9 @@ class DDPG(BaseOffPolicy):
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qv_grad_norm_value = qv_grad_norm_value
 
-        self._initialize_actor_networks(pi_phi)
-        self._initialize_critic_networks(qv_phi)
+        self._initialize_online_networks(pi_phi, qv_phi)
+        self._initialize_target_networks()
+
         self._pi_optim = optim.Adam(self._pi.parameters(), lr=pi_lrate)
         self._qv_optim = optim.Adam(
             self._qv.parameters(), qv_lrate, weight_decay=l2_reg_value)
@@ -44,23 +46,25 @@ class DDPG(BaseOffPolicy):
         self._noise = noise
         self._noise_scale_factor = noise_scale_factor
 
+    def _initialize_online_networks(self, pi_phi, qv_phi):
+        self._initialize_actor_networks(pi_phi)
+        self._initialize_critic_networks(qv_phi)
+
+    def _initialize_target_networks(self):
+        self._target_pi = deepcopy(self._pi).to(self._device)
+        self._target_pi.eval()
+        self._target_qv = deepcopy(self._qv).to(self._device)
+        self._target_qv.eval()
+
     def _initialize_actor_networks(self, phi: nn.Module):
         self._pi = DeterministicPolicyHead(
             phi=deepcopy(phi),
             output_dim=self._action_dim,
             fan_init=True).to(self._device)
-        self._target_pi = DeterministicPolicyHead(
-            phi=deepcopy(phi),
-            output_dim=self._action_dim,
-            fan_init=True).to(self._device)
-        self._target_pi.load_state_dict(self._pi.state_dict())
-        self._target_pi.eval()
 
     def _initialize_critic_networks(self, phi):
         self._qv = ValueHead(phi=deepcopy(phi)).to(self._device)
         self._target_qv = ValueHead(phi=deepcopy(phi)).to(self._device)
-        self._target_qv.load_state_dict(self._qv.state_dict())
-        self._target_qv.eval()
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)

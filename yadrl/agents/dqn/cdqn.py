@@ -19,12 +19,12 @@ class CategoricalDQN(DQN):
         self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
                                      device=self._device).unsqueeze(0)
 
-    def _build_head(self, phi, noise_type, use_dueling):
+    def _initialize_online_networks(self, phi, noise_type, use_dueling):
         head = CategoricalDuelingDQNHead if use_dueling else CategoricalDQNHead
-        return head(phi=copy.deepcopy(phi),
-                    output_dim=self._action_dim,
-                    support_dim=self._support_dim,
-                    noise_type=noise_type).to(self._device)
+        self._qv = head(phi=copy.deepcopy(phi),
+                        output_dim=self._action_dim,
+                        support_dim=self._support_dim,
+                        noise_type=noise_type).to(self._device)
 
     def _sample_q_value(self, state, train):
         probs = super()._sample_q_value(state, train)

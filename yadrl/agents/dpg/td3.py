@@ -19,9 +19,6 @@ class TD3(DDPG):
 
     def _initialize_critic_networks(self, phi):
         self._qv = DoubleValueHead(phi=phi).to(self._device)
-        self._target_qv = DoubleValueHead(phi=phi).to(self._device)
-        self._target_qv.load_state_dict(self._qv.state_dict())
-        self._target_qv.eval()
 
     def _q_value(self,
                  state: torch.Tensor,

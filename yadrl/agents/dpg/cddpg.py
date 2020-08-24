@@ -23,11 +23,6 @@ class CategoricalDDPG(DDPG):
         self._qv = CategoricalValueHead(
             phi=phi,
             support_dim=self._support_dim).to(self._device)
-        self._target_qv = CategoricalValueHead(
-            phi=phi,
-            support_dim=self._support_dim).to(self._device)
-        self._target_qv.load_state_dict(self._qv.state_dict())
-        self._target_qv.eval()
 
     def _q_value(self,
                  state: torch.Tensor,

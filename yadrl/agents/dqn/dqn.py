@@ -8,12 +8,12 @@ import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.utils as utils
-from yadrl.agents.base import BaseOffPolicy
+from yadrl.agents.base import BaseOffPolicyAgent
 from yadrl.common.scheduler import BaseScheduler
 from yadrl.networks.dqn_heads import DQNHead, DuelingDQNHead
 
 
-class DQN(BaseOffPolicy):
+class DQN(BaseOffPolicyAgent):
     def __init__(self,
                  phi: nn.Module,
                  learning_rate: float,
@@ -29,18 +29,21 @@ class DQN(BaseOffPolicy):
 
         self._epsilon_scheduler = epsilon_scheduler
 
-        self._qv = self._build_head(phi, noise_type, use_dueling)
+        self._initialize_online_networks(phi, noise_type, use_dueling)
+        self._initialize_target_networks()
 
-        self._target_qv = copy.deepcopy(self._qv).to(self._device)
-        self._target_qv.eval()
         self._optim = optim.Adam(self._qv.parameters(), lr=learning_rate,
                                  eps=0.01 / self._batch_size)
 
-    def _build_head(self, phi, noise_type, use_dueling):
+    def _initialize_online_networks(self, phi, noise_type, use_dueling):
         head = DuelingDQNHead if use_dueling else DQNHead
-        return head(phi=phi,
-                    output_dim=self._action_dim,
-                    noise_type=noise_type).to(self._device)
+        self._qv = head(phi=phi,
+                        output_dim=self._action_dim,
+                        noise_type=noise_type).to(self._device)
+
+    def _initialize_target_networks(self):
+        self._target_qv = copy.deepcopy(self._qv).to(self._device)
+        self._target_qv.eval()
 
     def _act(self, state: int, train: bool = False) -> np.ndarray:
         state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)

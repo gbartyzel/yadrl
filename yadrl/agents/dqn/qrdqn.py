@@ -16,12 +16,12 @@ class QuantileDQN(DQN):
             (np.arange(support_dim) + 0.5) / support_dim
         ).float().unsqueeze(0).to(self._device)
 
-    def _build_head(self, phi, noise_type, use_dueling):
+    def _initialize_online_networks(self, phi, noise_type, use_dueling):
         head = QuantileDuelingDQNHead if use_dueling else QuantileDQNHead
-        return head(phi=copy.deepcopy(phi),
-                    output_dim=self._action_dim,
-                    support_dim=self._support_dim,
-                    noise_type=noise_type).to(self._device)
+        self._qv = head(phi=copy.deepcopy(phi),
+                        output_dim=self._action_dim,
+                        support_dim=self._support_dim,
+                        noise_type=noise_type).to(self._device)
 
     def _sample_q_value(self, state, train):
         return super()._sample_q_value(state, train).mean(-1)
