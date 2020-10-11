@@ -96,19 +96,20 @@ class BaseOffPolicyAgent(abc.ABC):
         else:
             action = self._act(self._state, train)
         next_state, reward, done, _ = self._env.step(action)
-        self._observe(self._state, action, reward, next_state, done)
+        transition = (self._state, action, reward, next_state, done)
+        self._observe(*transition)
         self._state = next_state
-        return reward, done
+        return transition
 
     def train(self, max_steps: int):
         self._state = self._env.reset()
         total_reward = []
         pb = tqdm.tqdm(total=max_steps)
         while self._env_step < max_steps:
-            reward, done = self.step(True)
-            total_reward.append(reward)
+            transition = self.step(True)
+            total_reward.append(transition[2])
             pb.update(1)
-            if done:
+            if transition[-1]:
                 self._state = self._env.reset()
                 if self._env_step > 0:
                     self._log(sum(total_reward))
@@ -171,6 +172,7 @@ class BaseOffPolicyAgent(abc.ABC):
         self._writer.add_scalar('train/reward', reward, self._env_step)
         for k, v in self._data_to_log.items():
             self._writer.add_scalar(k, v, self._env_step)
+
         for name, param in self.parameters:
             self._writer.add_histogram(
                 'main/{}'.format(name), param, self._env_step)
