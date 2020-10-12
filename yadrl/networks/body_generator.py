@@ -1,129 +1,127 @@
 import abc
+from typing import Any, Dict, Union
 
+import torch
 import torch.nn as nn
-import yaml
 
-from yadrl.networks.noisy_linear import FactorizedNoisyLinear, \
-    IndependentNoisyLinear
+from yadrl.networks.body_parameter import BodyParameters
+from yadrl.networks.commons import (get_layer, get_normalization,
+                                    is_noisy_layer,
+                                    orthogonal_init)
 
 
 class Body(nn.Module, abc.ABC):
     implemented_observations = {}
 
-    _ACT_FN = {
-        'relu': nn.ReLU(),
-        'elu': nn.ELU(),
-        'tanh': nn.Tanh(),
-        'gelu': nn.GELU(),
-        'sigmoid': nn.Sigmoid(),
-        'selu': nn.SELU(),
-        'none': nn.Identity(),
-    }
-
-    def __init_subclass__(cls, body_type, **kwargs):
+    def __init_subclass__(cls, body_type: str, **kwargs):
         super().__init_subclass__(**kwargs)
         Body.implemented_observations[body_type] = cls
 
-    def __init__(self, parameters):
+    def __init__(self, parameters: BodyParameters):
         super().__init__()
-        self._parameters = parameters
+        self._body_parameters = parameters
         self._body = self._build_network()
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor, *args) -> torch.Tensor:
         for layer in self._body:
             input = layer(input)
         return input
 
     @classmethod
-    def build(cls, parameters):
-        return cls.implemented_observations[parameters['type']](parameters)
+    def build(cls, parameters: Union[str, Dict[str, Any]]) -> nn.Module:
+        params = BodyParameters(parameters)
+        return cls.implemented_observations[params.type](params)
+
+    def sample_noise(self):
+        for layer in self._body:
+            if is_noisy_layer(layer[0]):
+                layer[0].sample_noise()
+
+    def reset_noise(self):
+        for layer in self._body:
+            if is_noisy_layer(layer[0]):
+                layer[0].reset_noise()
+
+    def _reset_parameters(self):
+        pass
 
     @abc.abstractmethod
-    def _build_network(self):
+    def _build_network(self) -> nn.Module:
         pass
+
+    @property
+    def output_dim(self) -> int:
+        return list(self._body.parameters())[-1].shape[0]
 
 
 class LinearBody(Body, body_type='linear'):
-    def _build_network(self):
+    def _build_network(self) -> nn.Module:
         body = nn.ModuleList()
-        input_size = self._parameters['input_size']
-        for i, params in enumerate(self._parameters['layers']):
+        input_size = self._body_parameters.input.state
+        for i, params in enumerate(self._body_parameters.layers):
             inner = nn.Sequential()
-            layer = self.__get_layer(params['noise'], input_size,
-                                     params['output'], params['noise_init'])
+            if self._body_parameters.action_layer == i:
+                input_size += self._body_parameters.input.action
+            layer = get_layer(params.noise, input_size,
+                              params.output, params.noise_init)
             inner.add_module('Linear', layer)
 
-            if 'dropout' in params and params['dropout'] > 0.0:
-                inner.add_module('Dropout', nn.Dropout(p=params['dropout']))
+            if params.dropout > 0.0:
+                inner.add_module('Dropout', nn.Dropout(p=params.dropout))
 
-            if 'normalization' in params or 'none' in params['normalization']:
-                inner.add_module('Normalization', self.__get_normalization(
-                    params['normalization'], params['output']))
+            if params.normalization != 'none':
+                inner.add_module('Normalization',
+                                 get_normalization(params.normalization,
+                                                   params.output))
 
-            inner.add_module('Activation', Body._ACT_FN[params['activation']])
-            input_size = params['output']
+            inner.add_module('Activation', params.activation)
+            input_size = params.output
             body.add_module('Layer_{}'.format(i), inner)
-
         return body
 
-    @staticmethod
-    def __get_normalization(normalization_type, feature_size):
-        if normalization_type == 'layer_norm':
-            return nn.LayerNorm(feature_size)
-        elif normalization_type == 'batch_norm':
-            return nn.BatchNorm1d(feature_size)
-        else:
-            raise ValueError
+    def forward(self,
+                x_state: torch.Tensor,
+                x_action: torch.Tensor) -> torch.Tensor:
+        for i, layer in enumerate(self._body):
+            if i == self._body_parameters.action_layer:
+                x_state = torch.cat((x_state, x_action), dim=1)
+            x_state = layer(x_state)
+        return x_state
 
-    @staticmethod
-    def __get_layer(layer_type, input_size, feature_size, noise_init):
-        if layer_type == 'none':
-            return nn.Linear(input_size, feature_size)
-        elif layer_type == 'factorized':
-            return FactorizedNoisyLinear(input_size, feature_size, noise_init)
-        elif layer_type == 'independent':
-            return IndependentNoisyLinear(input_size, feature_size, noise_init)
-        else:
-            raise ValueError('Wrong noise type!')
+    def _reset_parameters(self):
+        for layer in self._body:
+            if not self._is_noisy_layer(layer[0]):
+                orthogonal_init(layer[0])
 
 
 class VisionBody(Body, body_type='vision'):
-    def _build_network(self):
+    def _build_network(self) -> nn.Module:
         body = nn.ModuleList()
-        input_size = self._parameters['input_size']
-        for i, layer in enumerate(self._parameters['layers']):
+        input_size = self._body_parameters.input.state
+        for i, params in enumerate(self._body_parameters.layers):
             inner = nn.Sequential()
             inner.add_module('Conv2d', nn.Conv2d(
-                in_channels=input_size, out_channels=layer['output'],
-                kernel_size=layer['kernel'], stride=layer['stride'],
-                padding=layer['padding']))
+                in_channels=input_size, out_channels=params.output,
+                kernel_size=params.kernel, stride=params.stride,
+                padding=params.padding))
 
-            if 'dropout' in layer and layer['dropout'] > 0.0:
-                inner.add_module('Dropout', nn.Dropout(p=layer['dropout']))
+            if params.dropout > 0.0:
+                inner.add_module('Dropout', nn.Dropout(p=params.dropout))
 
-            if 'normalization' in layer or 'none' in layer['normalization']:
-                inner.add_module('Normalization', self.__get_normalization(
-                    layer['normalization'], layer['output']))
+            if params.normalization != 'none':
+                inner.add_module('Normalization',
+                                 get_normalization(params.normalization,
+                                                   params.output,
+                                                   params.num_group))
 
-            inner.add_module('Activation', Body._ACT_FN[layer['activation']])
-            input_size = layer['output']
+            inner.add_module('Activation', params.activation)
+            input_size = params.output
             body.add_module('Layer_{}'.format(i), inner)
 
-    @staticmethod
-    def __get_normalization(normalization_type, feature_size, num_group):
-        if normalization_type == 'instance_norm':
-            return nn.InstanceNorm2d(feature_size, affine=True)
-        elif normalization_type == 'batch_norm':
-            return nn.BatchNorm2d(feature_size, affine=True)
-        elif normalization_type == 'group_norm':
-            return nn.GroupNorm(num_group, feature_size, affine=True)
-        else:
-            raise ValueError
+        if self._body_parameters.vision_option.flatten:
+            body.add_module('Flatten', nn.Flatten())
+        return body
 
-
-if __name__ == '__main__':
-    with open('./body_generator.yaml') as yaml_file:
-        parameters = yaml.load(yaml_file, Loader=yaml.FullLoader)
-
-    body = Body.build(parameters['body'])
-    print(body)
+    @property
+    def output_dim(self) -> int:
+        return self._body_parameters.vision_option.output_dim

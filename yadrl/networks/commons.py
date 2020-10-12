@@ -1,8 +1,10 @@
+from typing import Optional
+
 import numpy as np
 import torch.nn as nn
 
-from yadrl.networks.noisy_linear import FactorizedNoisyLinear
-from yadrl.networks.noisy_linear import IndependentNoisyLinear
+from yadrl.networks.noisy_linear import (FactorizedNoisyLinear,
+                                         IndependentNoisyLinear)
 
 
 def fan_init(x: nn.Parameter):
@@ -27,3 +29,24 @@ def get_layer(layer_type, input_dim, output_dim, sigma_init):
         return IndependentNoisyLinear(input_dim, output_dim, sigma_init)
     raise ValueError(
         'Wrong layer type, choose between: none, factorized, independent')
+
+
+def get_normalization(normalization_type: str,
+                      feature_size: int,
+                      num_group: Optional[int] = None):
+    if normalization_type == 'layer_norm':
+        return nn.LayerNorm(feature_size)
+    elif normalization_type == 'batch_norm_1d':
+        return nn.BatchNorm1d(feature_size)
+    elif normalization_type == 'instance_norm_2d':
+        return nn.InstanceNorm2d(feature_size, affine=True)
+    elif normalization_type == 'batch_norm_2d':
+        return nn.BatchNorm2d(feature_size, affine=True)
+    elif normalization_type == 'group_norm_2d':
+        return nn.GroupNorm(num_group, feature_size, affine=True)
+    else:
+        raise ValueError
+
+
+def is_noisy_layer(layer: nn.Module) -> bool:
+    return isinstance(layer, (FactorizedNoisyLinear, IndependentNoisyLinear))
