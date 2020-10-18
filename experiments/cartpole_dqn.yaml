@@ -1,0 +1,37 @@
+cartpole_dqn:
+  type: 'dqn'
+  env_id: 'CartPole-v0'
+  common:
+    discount_factor: 0.99
+    n_step: 1
+    batch_size: 64
+    reward_scaling: 1.0
+    warm_up_steps: 1000
+    polyak_factor: 0.0,
+    target_update_frequency: 1000
+    update_frequency: 1
+    update_steps: 1
+    logdir: './output'
+    seed: 1337
+  specific:
+    learning_rate: 0.001
+  state_normalizer:
+    type: null
+    parameters: null
+  exploration_strategy:
+    action_type: 'discrete'
+    type: 'linear'
+    parameters: null
+  memory:
+    capacity: 100
+    combined: False
+  body:
+    input:
+      state: 6
+    type: 'linear'
+    layers:
+      - output: 128
+        activation: 'relu'
+      - output: 128
+        activation: 'relu'
+
