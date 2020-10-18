@@ -57,11 +57,11 @@ class Body(nn.Module, abc.ABC):
 class LinearBody(Body, body_type='linear'):
     def _build_network(self) -> nn.Module:
         body = nn.ModuleList()
-        input_size = self._body_parameters.input.state
+        input_size = self._body_parameters.input.primary
         for i, params in enumerate(self._body_parameters.layers):
             inner = nn.Sequential()
             if self._body_parameters.action_layer == i:
-                input_size += self._body_parameters.input.action
+                input_size += self._body_parameters.input.secondary
             layer = get_layer(params.noise, input_size,
                               params.output, params.noise_init)
             inner.add_module('Linear', layer)
@@ -80,13 +80,13 @@ class LinearBody(Body, body_type='linear'):
         return body
 
     def forward(self,
-                x_state: torch.Tensor,
-                x_action: torch.Tensor) -> torch.Tensor:
+                x_primary: torch.Tensor,
+                x_secondary: torch.Tensor) -> torch.Tensor:
         for i, layer in enumerate(self._body):
             if i == self._body_parameters.action_layer:
-                x_state = torch.cat((x_state, x_action), dim=1)
-            x_state = layer(x_state)
-        return x_state
+                x_primary = torch.cat((x_primary, x_secondary), dim=1)
+            x_primary = layer(x_primary)
+        return x_primary
 
     def _reset_parameters(self):
         for layer in self._body:
@@ -97,7 +97,7 @@ class LinearBody(Body, body_type='linear'):
 class VisionBody(Body, body_type='vision'):
     def _build_network(self) -> nn.Module:
         body = nn.ModuleList()
-        input_size = self._body_parameters.input.state
+        input_size = self._body_parameters.input.primary
         for i, params in enumerate(self._body_parameters.layers):
             inner = nn.Sequential()
             inner.add_module('Conv2d', nn.Conv2d(
