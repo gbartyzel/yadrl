@@ -1,7 +1,7 @@
 import abc
 import datetime
 import os
-from typing import Any, Tuple, Union
+from typing import Any, Union
 
 import gym
 import numpy as np
@@ -11,27 +11,24 @@ import tqdm
 from gym.spaces.box import Box
 from torch.utils.tensorboard import SummaryWriter
 
-import yadrl.common.normalizer as normalizer
 from yadrl.common.memory import ReplayMemory, Rollout
+from yadrl.common.normalizer import DummyNormalizer
 
 
 class BaseOffPolicyAgent(abc.ABC):
     def __init__(self,
                  env: gym.Env,
+                 memory: ReplayMemory,
+                 state_normalizer: DummyNormalizer,
                  discount_factor: float = 0.99,
                  n_step: int = 1,
-                 memory_capacity: int = int(1e5),
                  batch_size: int = 64,
                  warm_up_steps: int = 64,
                  reward_scaling: float = 1.0,
-                 polyak_factor: float = 0.001,
+                 polyak_factor: float = 0.0,
                  update_frequency: int = 1,
                  target_update_frequency: int = 1000,
                  update_steps: int = 1,
-                 use_soft_update: bool = False,
-                 use_combined_experience_replay: bool = False,
-                 use_state_normalization: bool = False,
-                 state_norm_clip: Tuple[float, float] = (-5.0, 5.0),
                  logdir: str = './output',
                  seed: int = 1337):
         super(BaseOffPolicyAgent, self).__init__()
@@ -44,8 +41,6 @@ class BaseOffPolicyAgent(abc.ABC):
 
         self._device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
-
-        self._use_state_normalization = use_state_normalization
 
         self._state_dim = int(np.prod(self._env.observation_space.shape))
         if isinstance(self._env.action_space, Box):
@@ -60,26 +55,17 @@ class BaseOffPolicyAgent(abc.ABC):
         self._batch_size = batch_size
         self._warm_up_steps = warm_up_steps
 
-        self._use_soft_update = use_soft_update
+        self._use_soft_update = polyak_factor > 0.0
         self._polyak = polyak_factor
         self._update_frequency = update_frequency
         self._target_update_frequency = target_update_frequency
 
         self._update_steps = update_steps
 
-        self._memory = ReplayMemory(
-            capacity=memory_capacity,
-            combined=use_combined_experience_replay,
-            torch_backend=True,
-            device=self._device)
-
+        self._memory = memory
         self._rollout = Rollout(length=n_step, discount_factor=discount_factor)
 
-        if use_state_normalization:
-            self._state_normalizer = normalizer.RMSNormalizer(
-                (self._state_dim,), *state_norm_clip)
-        else:
-            self._state_normalizer = normalizer.DummyNormalizer()
+        self._state_normalizer = state_normalizer
 
         self._writer = SummaryWriter(self._create_logdir(logdir))
 

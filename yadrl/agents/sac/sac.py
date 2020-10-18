@@ -31,8 +31,7 @@ class SAC(BaseOffPolicyAgent):
         self._initialize_target_networks()
 
         self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
-        self._qv_optims = [optim.Adam(self._qv.head_1_parameters(), qv_lrate),
-                           optim.Adam(self._qv.head_2_parameters(), qv_lrate)]
+        self._qv_optim = optim.Adam(self._qv.parameters(), qv_lrate)
 
         self._temperature_tuning = temperature_tuning
         if temperature_tuning:
@@ -82,7 +81,7 @@ class SAC(BaseOffPolicyAgent):
             discount=batch.discount_factor * self._discount).detach()
         expected_qs = self._qv((state, batch.action), train=True)
 
-        qs_loss = (utils.mse_loss(q, target_q) for q in expected_qs)
+        qs_loss = sum(utils.mse_loss(q, target_q) for q in expected_qs)
 
         action, log_prob, _ = self._pi(state)
         target_log_prob = torch.min(*self._qv((state, action), train=True))
@@ -98,13 +97,12 @@ class SAC(BaseOffPolicyAgent):
         return qs_loss, policy_loss, temperature_loss
 
     def _update_parameters(self, qs_loss, policy_loss, alpha_loss):
-        for i, (loss, optim) in enumerate(zip(qs_loss, self._qv_optims)):
-            optim.zero_grad()
-            loss.backward()
-            if self._qvs_grad_norm_value > 0.0:
-                nn.utils.clip_grad_norm_(self._qv.parameters(item=i),
-                                         self._qvs_grad_norm_value)
-            optim.step()
+        self._qv_optim.zero_grad()
+        qs_loss.backward()
+        if self._qvs_grad_norm_value > 0.0:
+            nn.utils.clip_grad_norm_(self._qv.parameters(),
+                                     self._qvs_grad_norm_value)
+        self._qv_optim.step()
 
         self._pi_optim.zero_grad()
         policy_loss.backward()

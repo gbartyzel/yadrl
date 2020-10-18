@@ -1,6 +1,4 @@
-from typing import Dict
-from typing import Tuple
-from typing import Union
+from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
@@ -9,7 +7,7 @@ from yadrl.common.running_mean_std import RunningMeanStd
 
 
 class DummyNormalizer:
-    def __init__(self):
+    def __init__(self, **kwargs):
         pass
 
     def __call__(self,
@@ -18,10 +16,10 @@ class DummyNormalizer:
         return batch_input
 
     def update(self, batch_input):
-        return NotImplemented
+        pass
 
     def load(self, state_dict: Dict[str, Union[np.ndarray, int]]):
-        state_dict
+        pass
 
     def state_dict(self) -> Dict[str, Union[np.ndarray, int]]:
         state_dict = {}
@@ -32,8 +30,9 @@ class RMSNormalizer(DummyNormalizer):
     def __init__(self,
                  dim: Tuple[int, ...],
                  clip_min: float = -5.0,
-                 clip_max: float = 5.0):
-        super(RMSNormalizer, self).__init__()
+                 clip_max: float = 5.0,
+                 **kwargs):
+        super().__init__(**kwargs)
         self._rms = RunningMeanStd(dim)
         self._clip = (clip_min, clip_max)
 
@@ -73,8 +72,9 @@ class ScaleNormalizer(DummyNormalizer):
                  target_min: np.ndarray,
                  target_max: np.ndarray,
                  source_min: np.ndarray,
-                 source_max: np.ndarray):
-        super(ScaleNormalizer, self).__init__()
+                 source_max: np.ndarray,
+                 **kwargs):
+        super().__init__(**kwargs)
         self._t_min = target_min
         self._t_max = target_max
         self._s_min = source_min
@@ -97,8 +97,8 @@ class ScaleNormalizer(DummyNormalizer):
 
 
 class ImageNormalizer(DummyNormalizer):
-    def __init__(self):
-        super(ImageNormalizer, self).__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._scale_factor = 1.0 / 256.0
 
     def __call__(self,
