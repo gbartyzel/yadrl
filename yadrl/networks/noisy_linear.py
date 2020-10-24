@@ -10,23 +10,22 @@ class FactorizedNoisyLinear(nn.Linear):
                  out_features: int,
                  sigma_init: float = 0.5,
                  bias: bool = True):
-        super(FactorizedNoisyLinear, self).__init__(in_features, out_features,
-                                                    bias)
-        mu_init = 1.0 / np.sqrt(self.in_features)
-        sigma_init = sigma_init / np.sqrt(self.in_features)
-
-        self.weight.data.uniform_(-mu_init, mu_init)
+        self.mu_init = 1.0 / np.sqrt(in_features)
+        self.sigma_init = sigma_init / np.sqrt(in_features)
         self.weight_sigma = nn.Parameter(
-            torch.Tensor(out_features, in_features).fill_(sigma_init),
-            requires_grad=True)
-        if bias:
-            self.bias.data.uniform_(-mu_init, mu_init)
-            self.bias_sigma = nn.Parameter(
-                torch.Tensor(out_features).fill_(sigma_init),
-                requires_grad=True)
-
+            torch.Tensor(out_features, in_features), requires_grad=True)
+        self.bias_sigma = nn.Parameter(torch.Tensor(out_features),
+                                       requires_grad=True)
         self.register_buffer('noise_in', torch.zeros(1, in_features))
         self.register_buffer('noise_out', torch.zeros(out_features, 1))
+        super().__init__(in_features, out_features, bias)
+
+    def reset_parameters(self) -> None:
+        self.weight.data.uniform_(-self.mu_init, self.mu_init)
+        self.weight_sigma.data.fill_(self.sigma_init)
+        if self.bias:
+            self.bias.data.uniform_(-self.mu_init, self.mu_init)
+            self.weight_sigma.data.fill_(self.sigma_init)
 
     def forward(self, input):
         bias = self.bias
@@ -57,21 +56,23 @@ class IndependentNoisyLinear(nn.Linear):
                  out_features: int,
                  sigma_init: float = 0.017,
                  bias: bool = True):
-        super(IndependentNoisyLinear, self).__init__(in_features, out_features,
-                                                     bias)
-        mu_init = np.sqrt(3.0 / self.in_features)
-
-        self.weight.data.uniform_(-mu_init, mu_init)
+        self.mu_init = np.sqrt(3.0 / self.in_features)
+        self.sigma_init = sigma_init
         self.weight_sigma = nn.Parameter(
-            torch.Tensor(out_features, in_features).fill_(sigma_init))
-        if bias:
-            self.bias.data.uniform_(-mu_init, mu_init)
-            self.bias_sigma = nn.Parameter(
-                torch.Tensor(out_features).fill_(sigma_init))
-
+            torch.Tensor(out_features, in_features), requires_grad=True)
+        self.bias_sigma = nn.Parameter(torch.Tensor(out_features),
+                                       requires_grad=True)
         self.register_buffer('weight_eps',
                              torch.zeros(out_features, in_features))
         self.register_buffer('bias_eps', torch.zeros(out_features))
+        super().__init__(in_features, out_features, bias)
+
+    def reset_parameters(self) -> None:
+        self.weight.data.uniform_(-self.mu_init, self.mu_init)
+        self.weight_sigma.data.fill_(self.sigma_init)
+        if self.bias:
+            self.bias.data.uniform_(-self.mu_init, self.mu_init)
+            self.bias_sigma.data.fill_(self.sigma_init)
 
     def forward(self, input):
         bias = self.bias
