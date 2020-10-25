@@ -1,12 +1,12 @@
 import abc
-from typing import List
+from typing import Callable, Dict, List
 
 import torch
 import torch.nn as nn
 
 import yadrl.networks.noisy_linear as nl
 
-normalizations = {
+normalizations: Dict[str, Callable] = {
     'layer_norm': nn.LayerNorm,
     'batch_norm_1d': nn.BatchNorm1d,
     'instance_norm_1d': (lambda in_dim: nn.InstanceNorm1d(in_dim, affine=True)),
@@ -15,7 +15,7 @@ normalizations = {
     'group_norm': nn.GroupNorm,
 }
 
-activation_fn = {
+activation_fn: Dict[str, nn.Module] = {
     'relu': nn.ReLU(),
     'elu': nn.ELU(),
     'tanh': nn.Tanh(),
@@ -60,6 +60,14 @@ class Layer(nn.Module, abc.ABC):
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         return self._module(input_data)
 
+    def sample_noise(self):
+        if 'noisy' in self.layer_type:
+            self._module[0].sample_noise()
+
+    def reset_noise(self):
+        if 'noisy' in self.layer_type:
+            self._module[0].reset_noise()
+
     def _make_module(self,
                      activation: str,
                      normalization: str,
@@ -97,12 +105,12 @@ class Linear(Layer, layer_type='linear'):
         return nn.Linear(self.in_dim, self.out_dim, **kwargs)
 
 
-class FactorizedLinear(Layer, layer_type='factorized_linear'):
+class FactorizedLinear(Layer, layer_type='factorized_noisy_linear'):
     def _get_layer(self, **kwargs) -> nn.Module:
         return nl.FactorizedNoisyLinear(self.in_dim, self.out_dim, **kwargs)
 
 
-class IndependentLinear(Layer, layer_type='independent_linear'):
+class IndependentLinear(Layer, layer_type='independent_noisy_linear'):
     def _get_layer(self, **kwargs) -> nn.Module:
         return nl.IndependentNoisyLinear(self.in_dim, self.out_dim, **kwargs)
 
