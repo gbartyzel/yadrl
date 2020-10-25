@@ -23,6 +23,8 @@ activation_fn: Dict[str, nn.Module] = {
     'sigmoid': nn.Sigmoid(),
     'selu': nn.SELU(),
     'identity': nn.Identity(),
+    'softmax': nn.Softmax(dim=-1),
+    'log_softmax': nn.LogSoftmax(dim=-1),
     'none': None
 }
 

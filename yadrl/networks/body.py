@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -12,6 +12,11 @@ class Body(nn.Module):
         super().__init__()
         self._body_parameters: BodyParameters = parameters
         self._body = self._build_network()
+
+        if self._body_parameters.output_dim:
+            self.output_dim = self._body_parameters.output_dim
+        else:
+            self.output_dim = self._body[-1].out_dim
 
     def forward(self,
                 x_primary: torch.Tensor,
@@ -30,6 +35,10 @@ class Body(nn.Module):
         for layer in self._body:
             layer.reset_noise()
 
+    @staticmethod
+    def from_dict(parameters: Dict[str, Any]) -> 'Body':
+        return Body(BodyParameters(parameters))
+
     def _build_network(self) -> nn.Module:
         body = nn.ModuleList()
         input_size = self._body_parameters.input.primary
@@ -43,9 +52,3 @@ class Body(nn.Module):
             input_size = params['out_dim']
             body.append(layer)
         return body
-
-    @property
-    def output_dim(self) -> int:
-        if self._body_parameters.output_dim:
-            return self._body_parameters.output_dim
-        return self._body[-1].output_dim
