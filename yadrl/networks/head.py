@@ -1,6 +1,6 @@
 from typing import Sequence
 
-import torch
+import torch as th
 import torch.nn as nn
 
 from yadrl.networks.body import Body
@@ -44,8 +44,8 @@ class Head(nn.Module):
         self._heads = nn.ModuleList([self._make_module(self._output_dim)])
 
     def forward(self,
-                input_data: torch.Tensor,
-                sample_noise: bool = False) -> torch.Tensor:
+                input_data: th.Tensor,
+                sample_noise: bool = False) -> th.Tensor:
         self.reset_noise()
         if sample_noise:
             self.sample_noise()
@@ -85,7 +85,7 @@ class SimpleHead(Head, head_type='simple'):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def forward(self, input_data: torch.Tensor):
+    def forward(self, input_data: th.Tensor):
         out = super().forward(input_data)
         return self._heads[0](out)
 
@@ -94,7 +94,7 @@ class QuantileHead(SimpleHead, head_type='quantile'):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def forward(self, input_data: torch.Tensor):
+    def forward(self, input_data: th.Tensor):
         out = super().forward(input_data)
         return out.view(-1, self._output_dim, self._support_dim)
 
@@ -109,7 +109,7 @@ class DuelingHead(Head, head_type='dueling'):
         super().__init__(**kwargs)
         self._heads.append(self._make_module(self._support_dim))
 
-    def forward(self, input_data: torch.Tensor):
+    def forward(self, input_data: th.Tensor):
         out = super().forward(input_data)
         advantage, value = [module(out) for module in self._moduels]
         advantage += value - advantage.mean(1, True)
@@ -117,7 +117,7 @@ class DuelingHead(Head, head_type='dueling'):
 
 
 class QuantileDuelingHead(DuelingHead, head_type='quantile_dueling'):
-    def forward(self, input_data: torch.Tensor):
+    def forward(self, input_data: th.Tensor):
         out = super().forward(input_data)
         advantage, value = [module(out) for module in self._moduels]
         advantage = advantage.view(-1, self._output_dim, self._support_dim)
