@@ -1,3 +1,4 @@
+"""
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -28,7 +29,7 @@ class MDQN(DQN):
         self._temperature = 1.0 / self._reward_scaling
 
     def _compute_loss(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         with torch.no_grad():
@@ -36,7 +37,7 @@ class MDQN(DQN):
             next_pi = F.softmax(target_q_next / self._temperature, -1)
             next_log_pi = self._log_sum_exp_trick(target_q_next)
             m_log_pi = self._log_sum_exp_trick(
-                self._target_qv(state, True)).gather(1, batch.action.long())
+                self._target_qv(state, True)).gather(1, batch.secondary.long())
 
             target_q = utils.td_target(
                 reward=batch.reward + self._alpha
@@ -45,7 +46,7 @@ class MDQN(DQN):
                 target=(next_pi * (target_q_next - next_log_pi)).sum(-1, True),
                 discount=batch.discount_factor * self._discount)
 
-        expected_q = self._qv(state, True).gather(1, batch.action.long())
+        expected_q = self._qv(state, True).gather(1, batch.secondary.long())
         loss = utils.huber_loss(expected_q, target_q)
 
         if self._temperature_tuning:
@@ -67,3 +68,5 @@ class MDQN(DQN):
         temperature_loss.backward()
         self._temperature_optim.step()
         self._temperature = self._log_temperature.exp().detach()
+
+"""

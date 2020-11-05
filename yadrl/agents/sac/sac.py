@@ -1,4 +1,4 @@
-import copy
+"""import copy
 from typing import NoReturn
 
 import numpy as np
@@ -7,13 +7,13 @@ import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.utils as utils
-from yadrl.agents.base import BaseOffPolicyAgent
+from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.memory import Batch
 from yadrl.networks.heads.policy import GaussianPolicyHead
 from yadrl.networks.heads.value import DoubleValueHead
 
 
-class SAC(BaseOffPolicyAgent):
+class SAC(OffPolicyAgent):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
@@ -67,7 +67,7 @@ class SAC(BaseOffPolicyAgent):
         self._update_target(self._qv, self._target_qv)
 
     def _compute_loses(self, batch: Batch):
-        state = self._state_normalizer(batch.state)
+        state = self._state_normalizer(batch.primary)
         next_state = self._state_normalizer(batch.next_state)
 
         next_action, log_prob, _ = self._pi(next_state)
@@ -79,7 +79,7 @@ class SAC(BaseOffPolicyAgent):
             mask=batch.mask,
             target=target_next_v,
             discount=batch.discount_factor * self._discount).detach()
-        expected_qs = self._qv((state, batch.action), train=True)
+        expected_qs = self._qv((state, batch.secondary), train=True)
 
         qs_loss = sum(utils.mse_loss(q, target_q) for q in expected_qs)
 
@@ -145,3 +145,4 @@ class SAC(BaseOffPolicyAgent):
     @property
     def target_parameters(self):
         return self._target_qv.named_parameters()
+"""

@@ -1,3 +1,4 @@
+"""
 from typing import Tuple
 
 import torch
@@ -34,7 +35,7 @@ class CategoricalDDPG(DDPG):
 
     def _compute_loss(self, batch: Batch) -> torch.Tensor:
         next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
 
         with torch.no_grad():
             next_action = self._target_pi(next_state)
@@ -50,6 +51,7 @@ class CategoricalDDPG(DDPG):
             atoms=self._atoms,
             target_atoms=target_atoms)
 
-        log_probs = self._qv((state, batch.action), log_prob=True)
+        log_probs = self._qv((state, batch.secondary), log_prob=True)
         loss = -(target_probs * log_probs).sum(-1)
         return loss.mean()
+"""

@@ -16,8 +16,10 @@ class Head(nn.Module):
         'independent': 'independent_noisy_linear'
     }
 
-    def __init_subclass__(cls, head_type: str, **kwargs):
-        cls.registered_heads[head_type] = cls
+    def __init_subclass__(cls, head_type: str = None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if head_type:
+            cls.registered_heads[head_type] = cls
 
     @classmethod
     def build(cls, head_type: str, **kwargs) -> 'Head':

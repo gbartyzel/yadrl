@@ -1,4 +1,4 @@
-import numpy as np
+"""import numpy as np
 import torch
 
 import yadrl.common.utils as utils
@@ -24,7 +24,7 @@ class SACDiscrete(SAC):
         return super()._act(state, train).argmax()
 
     def _compute_loses(self, batch: Batch):
-        state = self._state_normalizer(batch.state)
+        state = self._state_normalizer(batch.primary)
         next_state = self._state_normalizer(batch.next_state)
 
         next_action, log_prob = self._pi(next_state)
@@ -39,7 +39,7 @@ class SACDiscrete(SAC):
             target=target_next_v,
             discount=batch.discount_factor * self._discount).detach()
 
-        qs_loss = (utils.mse_loss(q.gather(1, batch.action.long()), target_q)
+        qs_loss = (utils.mse_loss(q.gather(1, batch.secondary.long()), target_q)
                    for q in self._qv(state, True))
 
         action, log_prob = self._pi(state)
@@ -55,3 +55,4 @@ class SACDiscrete(SAC):
             temperature_loss = 0.0
 
         return qs_loss, policy_loss, temperature_loss
+"""

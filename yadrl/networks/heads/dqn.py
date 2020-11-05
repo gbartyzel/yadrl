@@ -5,12 +5,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from yadrl.networks.body import Body
 from yadrl.networks.commons import get_layer
 
 
 class DQNHead(nn.Module):
     def __init__(self,
-                 phi: nn.Module,
+                 phi: Body,
                  output_dim: int,
                  noise_type: str = 'none',
                  sigma_init: float = 0.5):
@@ -202,3 +203,7 @@ class GradScaler(torch.autograd.Function):
 
 
 scale_gradient = GradScaler.apply
+
+if __name__ == '__main__':
+    a = [1]
+    print(['relu'] * len(a[:-1]))

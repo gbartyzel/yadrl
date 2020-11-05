@@ -1,12 +1,14 @@
+from dataclasses import InitVar, dataclass, field
 from typing import Any, Dict, Tuple, Union
 
+import gym
 import yaml
-from dataclasses import InitVar, dataclass, field
 
 import yadrl.common.exploration_noise as noise
 import yadrl.common.normalizer as norm
 import yadrl.common.scheduler as sch
 from yadrl.common.memory import ReplayMemory
+from yadrl.networks.body import Body
 from yadrl.networks.body_parameter import BodyParameters
 
 T_CONFIG = Dict[str, Any]
@@ -14,25 +16,28 @@ T_CONFIG = Dict[str, Any]
 
 @dataclass
 class Configuration:
+    env: gym.Env = field(init=False)
     experiment_name: str = field(init=False)
-    type: str = field(init=False)
+    agent_type: str = field(init=False)
     common: T_CONFIG = field(init=False)
     specific: T_CONFIG = field(init=False)
     state_normalizer: Any = field(init=False)
     exploration_strategy: Any = field(init=False)
     memory: Any = field(init=False)
-    body: BodyParameters = field(init=False)
+    body: Body = field(init=False)
     config_path: InitVar[str]
 
     def __post_init__(self, config_path: str):
         data, self.experiment_name = self.__load_config(config_path)
-        self.type = data['type']
+        self.agent_type = data['type']
         self.common = data['common']
         self.specific = data['specific']
         self.memory = ReplayMemory(**data['memory'])
-        self.state_normalizer = self.__parse_state_normalizer(data)
-        self.exploration_strategy = self.__parse_exploration_strategy(data)
-        self.body = BodyParameters(data['body'])
+        self.state_normalizer = self.__parse_state_normalizer(
+            data['state_normalizer'])
+        self.exploration_strategy = self.__parse_exploration_strategy(
+            data['exploration_strategy'])
+        self.body = Body(BodyParameters(data['body']))
 
     @staticmethod
     def __load_config(config_path: str) -> Tuple[T_CONFIG, str]:

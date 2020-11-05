@@ -1,4 +1,4 @@
-from copy import deepcopy
+"""from copy import deepcopy
 from typing import Any, NoReturn, Sequence, Union
 
 import numpy as np
@@ -7,14 +7,14 @@ import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.utils as utils
-from yadrl.agents.base import BaseOffPolicyAgent
+from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
 from yadrl.networks.heads.policy import DeterministicPolicyHead
 from yadrl.networks.heads.value import ValueHead
 
 
-class DDPG(BaseOffPolicyAgent):
+class DDPG(OffPolicyAgent):
     def __init__(self,
                  pi_phi: nn.Module,
                  qv_phi: nn.Module,
@@ -116,7 +116,7 @@ class DDPG(BaseOffPolicyAgent):
 
     def _compute_loss(self, batch: Batch) -> torch.Tensor:
         next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
 
         with torch.no_grad():
             next_action = self._target_pi(next_state).detach()
@@ -127,11 +127,11 @@ class DDPG(BaseOffPolicyAgent):
             mask=batch.mask,
             target=target_next_q.view(-1, 1),
             discount=batch.discount_factor * self._discount)
-        expected_q = self._q_value(state, batch.action)
+        expected_q = self._q_value(state, batch.secondary)
         return utils.mse_loss(expected_q, target_q)
 
     def _update_actor(self, batch: Batch):
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
         q_value = self._q_value(state, self._pi(state))
         loss = -q_value.mean()
         self._pi_optim.zero_grad()
@@ -172,3 +172,4 @@ class DDPG(BaseOffPolicyAgent):
     def target_parameters(self):
         return list(self._target_qv.named_parameters()) + \
                list(self._target_pi.named_parameters())
+"""

@@ -1,3 +1,4 @@
+"""
 import copy
 
 import numpy as np
@@ -27,7 +28,7 @@ class QuantileDQN(DQN):
         return super()._sample_q_value(state, train).mean(-1)
 
     def _compute_loss(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         batch_vec = torch.arange(self._batch_size).long()
@@ -46,7 +47,7 @@ class QuantileDQN(DQN):
             target=next_quantiles,
             discount=batch.discount_factor * self._discount)
 
-        action = batch.action.long().squeeze()
+        action = batch.secondary.long().squeeze()
         expected_quantiles = self._qv(state, True)
         expected_quantiles = expected_quantiles[batch_vec, action, :]
 
@@ -56,3 +57,4 @@ class QuantileDQN(DQN):
             cumulative_density=self._cumulative_density)
 
         return loss
+"""

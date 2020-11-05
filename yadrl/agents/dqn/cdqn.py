@@ -1,3 +1,4 @@
+"""
 import copy
 from typing import Tuple
 
@@ -9,7 +10,7 @@ from yadrl.networks.heads.dqn import (CategoricalDQNHead,
                                       CategoricalDuelingDQNHead, )
 
 
-class CategoricalDQN(DQN):
+class CategoricalDQN(DQN, agent_type='categorical_dqn'):
     def __init__(self,
                  v_limit: Tuple[float, float] = (-100.0, 100.0),
                  support_dim: int = 51, **kwargs):
@@ -31,7 +32,7 @@ class CategoricalDQN(DQN):
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_loss(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         batch_vec = torch.arange(self._batch_size).long()
@@ -55,7 +56,8 @@ class CategoricalDQN(DQN):
             next_probs=next_probs,
             atoms=self._atoms,
             target_atoms=target_atoms)
-        action = batch.action.squeeze().long()
+        action = batch.secondary.squeeze().long()
         log_probs = self._qv(state, True, True)[batch_vec, action, :]
         loss = torch.mean(-(target_probs * log_probs).sum(-1))
         return loss
+"""

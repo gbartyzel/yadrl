@@ -98,3 +98,11 @@ class SquashedGaussianHead(GaussianHead, head_type='squashed_gaussian'):
         log_prob = super().log_prob(gaussian_action)
         log_prob -= th.log(1.0 - th.tanh(action).pow(2) + eps).sum(-1, True)
         return log_prob
+
+
+if __name__ == '__main__':
+    import torch.nn as nn
+
+    body = nn.Linear(6, 128)
+    body.output_dim = 128
+    Head.build('gaussian', phi=body, output_dim=64)

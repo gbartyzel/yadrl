@@ -1,4 +1,4 @@
-import torch
+"""import torch
 
 import yadrl.common.utils as utils
 from yadrl.agents.dpg.ddpg import DDPG
@@ -27,7 +27,7 @@ class TD3(DDPG):
         return self._qv.eval_head_1((state, action))
 
     def _compute_loss(self, batch: Batch) -> torch.Tensor:
-        state = self._state_normalizer(batch.state)
+        state = self._state_normalizer(batch.primary)
         next_state = self._state_normalizer(batch.next_state)
 
         with torch.no_grad():
@@ -43,8 +43,9 @@ class TD3(DDPG):
             mask=batch.mask,
             target=target_next_q,
             discount=batch.discount_factor * self._discount)
-        expected_q1, expected_q2 = self._qv((state, batch.action))
+        expected_q1, expected_q2 = self._qv((state, batch.secondary))
 
         loss = utils.mse_loss(expected_q1, target_q) + \
                utils.mse_loss(expected_q2, target_q)
         return loss
+"""

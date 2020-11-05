@@ -1,4 +1,4 @@
-import numpy as np
+"""import numpy as np
 import torch
 
 import yadrl.common.utils as utils
@@ -32,7 +32,7 @@ class QuantileDDPG(DDPG):
 
     def _compute_loss(self, batch: Batch) -> torch.Tensor:
         next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.state, self._device)
+        state = self._state_normalizer(batch.primary, self._device)
 
         with torch.no_grad():
             next_action = self._target_pi(next_state)
@@ -43,10 +43,11 @@ class QuantileDDPG(DDPG):
             target=next_quantiles,
             discount=batch.discount_factor * self._discount).detach()
 
-        expected_quantiles = self._qv((state, batch.action))
+        expected_quantiles = self._qv((state, batch.secondary))
 
         loss = utils.quantile_hubber_loss(
             prediction=expected_quantiles,
             target=target_quantiles,
             cumulative_density=self._cumulative_density)
         return loss
+"""
