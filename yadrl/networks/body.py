@@ -20,7 +20,7 @@ class Body(nn.Module):
 
     def forward(self,
                 x_primary: torch.Tensor,
-                x_secondary: Optional[torch.Tensor] == None) -> torch.Tensor:
+                x_secondary: Optional[torch.Tensor] = None) -> torch.Tensor:
         for i, layer in enumerate(self._body):
             if i == self._body_parameters.action_layer:
                 x_primary = torch.cat((x_primary, x_secondary), dim=1)
