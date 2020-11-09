@@ -7,22 +7,12 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
+import tqdm
 from gym.spaces.box import Box
 from torch.utils.tensorboard import SummaryWriter
 
 from yadrl.common.memory import ReplayMemory, Rollout
 from yadrl.common.normalizer import DummyNormalizer
-
-"""
-class Agent(abc.ABCMeta):
-    registered_agents = {}
-
-    def __new__(cls, name, bases, namespace):
-        new_cls = super().__new__(cls, name, bases, namespace)
-        if not inspect.isabstract(new_cls):
-            cls.registered_agents[new_cls.name] = new_cls
-        return new_cls
-"""
 
 
 class BaseAgent(abc.ABC):
@@ -48,7 +38,7 @@ class BaseAgent(abc.ABC):
                  update_steps: int = 1,
                  experiment_name: str = './output',
                  seed: int = 1337):
-        super().__init__(agent_type=None)
+        super().__init__()
         self._env = env
         self._state = None
         self._env_step = 0
@@ -76,7 +66,7 @@ class BaseAgent(abc.ABC):
 
         self._writer = SummaryWriter(self._create_logdir(experiment_name))
 
-        self._networks = self._initialize_online_networks(body)
+        self._networks = self._initialize_networks(body)
 
     def train(self, max_steps: int):
         pass
@@ -155,7 +145,7 @@ class BaseAgent(abc.ABC):
         return NotImplementedError
 
     @abc.abstractmethod
-    def _initialize_online_networks(self, *args, **kwargs):
+    def _initialize_networks(self, *args, **kwargs):
         return NotImplementedError
 
     @staticmethod
@@ -172,7 +162,6 @@ class BaseAgent(abc.ABC):
 
 
 class OffPolicyAgent(BaseAgent):
-    name = 'offpolicy'
 
     def __init__(self,
                  memory: ReplayMemory,
@@ -243,10 +232,6 @@ class OffPolicyAgent(BaseAgent):
     @staticmethod
     def _hard_update(model: nn.Module, target_model: nn.Module):
         target_model.load_state_dict(model.state_dict())
-
-    @abc.abstractmethod
-    def _act(self, *args):
-        return NotImplementedError
 
     @abc.abstractmethod
     def _update(self):

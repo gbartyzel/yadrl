@@ -14,7 +14,7 @@ from yadrl.networks.head import Head
 
 
 class DQN(OffPolicyAgent, agent_type='dqn'):
-    name = 'dqn'
+    head_types = ['simple', 'dueling_simple']
 
     def __init__(self,
                  learning_rate: float,
@@ -22,17 +22,18 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
                  exploration_strategy: BaseScheduler = BaseScheduler(),
                  noise_type: str = 'none',
                  use_double_q: bool = False,
-                 use_dueling: bool = False, **kwargs):
+                 use_dueling: bool = False,
+                 **kwargs):
+        self._noise_type = noise_type
+        self._use_dueling = use_dueling
         super().__init__(**kwargs)
         self._grad_norm_value = grad_norm_value
         self._use_double_q = use_double_q
-        self._noise_type = noise_type
-        self._use_dueling = use_dueling
-
         self._epsilon_scheduler = exploration_strategy
-
         self._optim = optim.Adam(self.model.parameters(), lr=learning_rate,
                                  eps=0.01 / self._batch_size)
+
+        print(self.model)
 
     @property
     def model(self) -> nn.Module:
@@ -50,18 +51,19 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
     def target_parameters(self):
         return self.target_model.named_parameters()
 
-    def _initialize_online_networks(self,
-                                    phi: nn.Module) -> Dict[str, nn.Module]:
-        head_type = 'dueling_simple' if self._use_dueling else 'simple'
+    def _initialize_networks(self, phi: nn.Module) -> Dict[str, nn.Module]:
+        head_type = self.head_types[int(self._use_dueling)]
+        support_dim = self._support_dim if hasattr(self, '_support_dim') else 1
         network = Head.build(head_type=head_type,
                              phi=phi,
+                             support_dim=support_dim,
                              output_dim=self._action_dim,
                              noise_type=self._noise_type)
-        target_network = copy.deepcopy(network['model'])
+        target_network = copy.deepcopy(network)
         network.to(self._device)
         target_network.to(self._device)
         target_network.eval()
-        return {'model': network, 'target_model': network}
+        return {'model': network, 'target_model': target_network}
 
     def _act(self, state: int, train: bool = False) -> np.ndarray:
         state = super()._act(state)
@@ -93,11 +95,11 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         self._update_target(self.model, self.target_model)
 
     def _compute_loss(self, batch):
-        state = self._state_normalizer(batch.primary, self._device)
+        state = self._state_normalizer(batch.state, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         with torch.no_grad():
-            target_next_q = self.target_model(next_state, True).detach()
+            target_next_q = self.target_model(next_state, True)
             if self._use_double_q:
                 next_action = self.model(next_state, True).argmax(1, True)
                 target_next_q = target_next_q.gather(1, next_action)
