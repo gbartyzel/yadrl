@@ -1,6 +1,18 @@
 import torch
 
 
+def to_tensor(data, device):
+    return torch.from_numpy(data).float().to(device)
+
+
+def l2_loss(model: torch.nn.Module, l2_lambda: float) -> torch.Tensor:
+    l2_term = torch.zeros(1)
+    for name, parameters in model.named_parameters():
+        if 'weight' in name:
+            l2_term += parameters.norm(2)
+    return l2_term * l2_lambda
+
+
 def mse_loss(prediction: torch.Tensor,
              target: torch.Tensor,
              reduction: str = 'mean') -> torch.Tensor:
