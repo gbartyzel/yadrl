@@ -69,7 +69,7 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
 
         self.model.eval()
         with torch.no_grad():
-            q_value = self._sample_q_value(state, train)
+            q_value = self._sample_q(state, train)
         self.model.train()
 
         eps_flag = random.random() > self._epsilon_scheduler.step()
@@ -77,7 +77,8 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
             return q_value.argmax(-1)[0].cpu().numpy()
         return random.randint(0, self._action_dim - 1)
 
-    def _sample_q_value(self, state, train):
+    def _sample_q(self, state: torch.Tensor,
+                  train: bool = False) -> torch.Tensor:
         self.model.reset_noise()
         if train:
             self.model.sample_noise()

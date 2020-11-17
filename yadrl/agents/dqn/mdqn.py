@@ -32,33 +32,35 @@ class MDQN(DQN, agent_type='munchausen_dqn'):
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         with torch.no_grad():
-            target_q_next = self.target_model(next_state, True)
+            self.target_model.sample_noise()
+            target_q_next = self.target_model(next_state)
             next_pi = F.softmax(target_q_next / self._temperature, -1)
-            next_log_pi = self._log_sum_exp_trick(target_q_next)
-            m_log_pi = self._log_sum_exp_trick(
-                self.target_model(state, True)).gather(1, batch.action.long())
+            next_log_pi = self._log_sum_exp(target_q_next)
+            m_log_pi = self._log_sum_exp(
+                self.target_model(state)).gather(1, batch.action.long())
 
+            m_reward = batch.reward + self._alpha * m_log_pi.clamp(
+                self._lower_clamp, 0.0)
             target_q = utils.td_target(
-                reward=batch.reward + self._alpha
-                       * m_log_pi.clamp(self._lower_clamp, 0.0),
+                reward=m_reward,
                 mask=batch.mask,
                 target=(next_pi * (target_q_next - next_log_pi)).sum(-1, True),
                 discount=batch.discount_factor * self._discount)
 
-        expected_q = self._qv(state, True).gather(1, batch.action.long())
+        expected_q = self.model(state).gather(1, batch.action.long())
         loss = utils.huber_loss(expected_q, target_q)
 
         if self._temperature_tuning:
             self._update_temperature(expected_q)
         return loss
 
-    def _log_sum_exp_trick(self, q_value):
+    def _log_sum_exp(self, q_value):
         diff = q_value - q_value.max(-1, True)[0]
         return diff - self._temperature * torch.log(
             torch.exp(diff / self._temperature).sum(-1, True))
 
     def _update_temperature(self, q_value):
-        log_pi = self._log_sum_exp_trick(q_value)
+        log_pi = self._log_sum_exp(q_value)
         temperature_loss = torch.mean(
             -self._log_temperature
             * (log_pi + self._target_entropy).detach())

@@ -17,21 +17,23 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
         self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
                                      device=self._device).unsqueeze(0)
 
-    def _sample_q_value(self, state, train):
-        probs = super()._sample_q_value(state).exp()
+    def _sample_q(self, state: torch.Tensor,
+                  train: bool = False) -> torch.Tensor:
+        probs = super()._sample_q(state, train).exp()
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_loss(self, batch):
         state = self._state_normalizer(batch.state, self._device)
         next_state = self._state_normalizer(batch.next_state, self._device)
-
         batch_vec = torch.arange(self._batch_size).long()
 
         with torch.no_grad():
-            next_probs = self.target_model(next_state, True)
+            self.target_model.sample_noise()
+            next_probs = self.target_model(next_state).exp()
             exp_atoms = self._atoms.expand_as(next_probs)
             if self._use_double_q:
-                next_q = self.model(next_state, True).mul(exp_atoms).sum(-1)
+                self.model.sample_noise()
+                next_q = self.model(next_state).exp().mul(exp_atoms).sum(-1)
             else:
                 next_q = next_probs.mul(exp_atoms).sum(-1)
             next_action = next_q.argmax(-1).long()
@@ -46,7 +48,9 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
             next_probs=next_probs,
             atoms=self._atoms,
             target_atoms=target_atoms)
-        action = batch.secondary.squeeze().long()
-        log_probs = self.model(state, True, True)[batch_vec, action, :]
+
+        self.model.sample_noise()
+        log_probs = self.model(state)
+        log_probs = log_probs[batch_vec, batch.action.squeeze().long(), :]
         loss = torch.mean(-(target_probs * log_probs).sum(-1))
         return loss
