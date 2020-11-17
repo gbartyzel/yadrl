@@ -18,7 +18,7 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
                                      device=self._device).unsqueeze(0)
 
     def _sample_q_value(self, state, train):
-        probs = super()._sample_q_value(state, train)
+        probs = super()._sample_q_value(state).exp()
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_loss(self, batch):

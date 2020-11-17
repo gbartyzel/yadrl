@@ -1,10 +1,9 @@
-"""import numpy as np
+import numpy as np
 import torch
 
 import yadrl.common.utils as utils
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
-from yadrl.networks.heads.value import QuantileValueHead
 
 
 class QuantileDDPG(DDPG):
@@ -17,37 +16,28 @@ class QuantileDDPG(DDPG):
             (np.arange(support_dim) + 0.5) / support_dim
         ).float().unsqueeze(0).to(self._device)
 
-    def _initialize_critic_networks(self, phi):
-        self._qv = QuantileValueHead(
-            phi=phi,
-            support_dim=self._support_dim).to(self._device)
+    def _sample_q(self, state: torch.Tensor,
+                  action: torch.Tensor) -> torch.Tensor:
+        return super()._sample_q(state).mean(-1)
 
-    def _q_value(self,
-                 state: torch.Tensor,
-                 action: torch.Tensor,
-                 **kwargs) -> torch.Tensor:
-        quantiles = super()._q_value(state, action)
-        q_value = quantiles.mean(-1)
-        return q_value
-
-    def _compute_loss(self, batch: Batch) -> torch.Tensor:
+    def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
         next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.primary, self._device)
+        state = self._state_normalizer(batch.state, self._device)
 
         with torch.no_grad():
-            next_action = self._target_pi(next_state)
-            next_quantiles = self._target_qv((next_state, next_action))
+            next_action = self.target_pi(next_state)
+            self.target_qv.sample_noise()
+            next_quantiles = self.target_qv(next_state, next_action)
         target_quantiles = utils.td_target(
             reward=batch.reward,
             mask=batch.mask,
             target=next_quantiles,
-            discount=batch.discount_factor * self._discount).detach()
+            discount=batch.discount_factor * self._discount)
 
-        expected_quantiles = self._qv((state, batch.secondary))
-
+        self.qv.sample_noise()
+        expected_quantiles = self.qv(state, batch.action)
         loss = utils.quantile_hubber_loss(
             prediction=expected_quantiles,
             target=target_quantiles,
             cumulative_density=self._cumulative_density)
         return loss
-"""

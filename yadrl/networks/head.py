@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import torch as th
 import torch.nn as nn
@@ -45,13 +45,9 @@ class Head(nn.Module):
         self._phi = phi
         self._heads = nn.ModuleList([
             self._make_module(self._output_dim * self._support_dim)])
-
-    def forward(self,
-                input_data: th.Tensor,
-                sample_noise: bool = False) -> th.Tensor:
         self.reset_noise()
-        if sample_noise:
-            self.sample_noise()
+
+    def forward(self, *input_data: th.Tensor) -> th.Tensor:
         out = self._phi(input_data)
         return out
 
@@ -78,7 +74,7 @@ class Head(nn.Module):
         return nn.Sequential(*layers)
 
     def _get_act_fn(self, iteration, last_iteration):
-        if iteration + 1 == last_iteration - 1:
+        if iteration + 1 == last_iteration - 2:
             return self._output_act_fn
         return self._hidden_act_fn
 
@@ -87,8 +83,8 @@ class SimpleHead(Head, head_type='simple'):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def forward(self, input_data: th.Tensor, sample_noise: bool = False):
-        out = super().forward(input_data, sample_noise)
+    def forward(self, *input_data: th.Tensor):
+        out = super().forward(*input_data)
         return self._heads[0](out)
 
 
@@ -96,8 +92,8 @@ class QuantileHead(SimpleHead, head_type='quantile'):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def forward(self, input_data: th.Tensor, sample_noise: bool = False):
-        out = super().forward(input_data, sample_noise)
+    def forward(self, *input_data: th.Tensor):
+        out = super().forward(*input_data)
         return out.view(-1, self._output_dim, self._support_dim)
 
 
@@ -111,16 +107,16 @@ class DuelingHead(Head, head_type='dueling'):
         super().__init__(**kwargs)
         self._heads.append(self._make_module(self._support_dim))
 
-    def forward(self, input_data: th.Tensor, sample_noise: bool = False):
-        out = super().forward(input_data, sample_noise)
+    def forward(self, *input_data: th.Tensor):
+        out = super().forward(*input_data)
         advantage, value = [module(out) for module in self._moduels]
         advantage += value - advantage.mean(1, True)
         return advantage
 
 
 class QuantileDuelingHead(DuelingHead, head_type='quantile_dueling'):
-    def forward(self, input_data: th.Tensor, sample_noise: bool = False):
-        out = super().forward(input_data, sample_noise)
+    def forward(self, *input_data: th.Tensor):
+        out = super().forward(*input_data)
         advantage, value = [module(out) for module in self._moduels]
         advantage = advantage.view(-1, self._output_dim, self._support_dim)
         value = value.view(-1, 1, self._support_dim)
@@ -128,6 +124,26 @@ class QuantileDuelingHead(DuelingHead, head_type='quantile_dueling'):
         return advantage
 
 
-class CategoricalDuelingHead(QuantileDuelingHead, head_type='categorical_head'):
+class CategoricalDuelingHead(QuantileDuelingHead,
+                             head_type='categorical_dueling'):
     def __init__(self, **kwargs):
         super().__init__(output_activation='log_softmax', **kwargs)
+
+
+class MultiHead(Head, head_type='multi'):
+    def __init__(self, num_heads: int = 2, **kwargs):
+        super().__init__(**kwargs)
+        delattr(self, '_phi')
+        self._heads = nn.ModuleList([
+            Head.build(head_type='simple', **kwargs) for _ in range(num_heads)])
+
+    def forward(self, *input_data: th.Tensor) -> Tuple[th.Tensor, ...]:
+        return tuple(head(*input_data) for head in self._heads)
+
+    def sample_noise(self):
+        for head in self._heads:
+            head.sample_noise()
+
+    def reset_noise(self):
+        for head in self._heads:
+            head.reset_noise()

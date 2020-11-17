@@ -2,7 +2,6 @@ import copy
 import random
 from typing import Dict
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -65,7 +64,7 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         target_network.eval()
         return {'model': network, 'target_model': target_network}
 
-    def _act(self, state: int, train: bool = False) -> np.ndarray:
+    def _act(self, state: int, train: bool = False) -> int:
         state = super()._act(state)
 
         self.model.eval()
@@ -79,7 +78,10 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         return random.randint(0, self._action_dim - 1)
 
     def _sample_q_value(self, state, train):
-        return self.model(state, train)
+        self.model.reset_noise()
+        if train:
+            self.model.sample_noise()
+        return self.model(state)
 
     def _update(self):
         batch = self._memory.sample(self._batch_size)
@@ -99,9 +101,11 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         next_state = self._state_normalizer(batch.next_state, self._device)
 
         with torch.no_grad():
+            self.target_model.sample_noise()
             target_next_q = self.target_model(next_state, True)
             if self._use_double_q:
-                next_action = self.model(next_state, True).argmax(1, True)
+                self.model.sample_noise()
+                next_action = self.model(next_state).argmax(1, True)
                 target_next_q = target_next_q.gather(1, next_action)
             else:
                 target_next_q = target_next_q.max(1)[0].view(-1, 1)
@@ -111,6 +115,8 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
             mask=batch.mask,
             target=target_next_q,
             discount=batch.discount_factor * self._discount)
-        expected_q = self.model(state, True).gather(1, batch.action.long())
+
+        self.model.sample_noise()
+        expected_q = self.model(state).gather(1, batch.action.long())
         loss = utils.huber_loss(expected_q, target_q)
         return loss
