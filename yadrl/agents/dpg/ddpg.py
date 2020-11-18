@@ -98,8 +98,13 @@ class DDPG(OffPolicyAgent):
         if done:
             self._noise.reset()
 
-    def _sample_q(self, state: torch.Tensor,
-                  action: torch.Tensor) -> torch.Tensor:
+    def _sample_q(self,
+                  state: torch.Tensor,
+                  action: torch.Tensor,
+                  sample_noise: bool = False) -> torch.Tensor:
+        self.qv.reset_noise()
+        if sample_noise:
+            self.qv.sample_noise()
         return self.qv(state, action)
 
     def _update(self):
@@ -145,7 +150,7 @@ class DDPG(OffPolicyAgent):
 
     def _update_actor(self, batch: Batch):
         state = self._state_normalizer(batch.state, self._device)
-        loss = -self._sample_q(state, self.pi(state)).mean()
+        loss = -self._sample_q(state, self.pi(state), True).mean()
         self._pi_optim.zero_grad()
 
         loss.backward()

@@ -18,9 +18,11 @@ class CategoricalDDPG(DDPG):
         self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
                                      device=self._device).unsqueeze(0)
 
-    def _sample_q(self, state: torch.Tensor,
-                  action: torch.Tensor) -> torch.Tensor:
-        probs = super()._sample_q(state, action).exp()
+    def _sample_q(self,
+                  state: torch.Tensor,
+                  action: torch.Tensor,
+                  sample_noise: bool = False) -> torch.Tensor:
+        probs = super()._sample_q(state, action, sample_noise).exp()
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_loss(self, batch: Batch) -> torch.Tensor:

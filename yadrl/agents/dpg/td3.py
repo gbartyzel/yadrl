@@ -32,8 +32,13 @@ class TD3(DDPG, agent_type='td3'):
 
         return networks
 
-    def _sample_q(self, state: torch.Tensor,
-                  action: torch.Tensor) -> torch.Tensor:
+    def _sample_q(self,
+                  state: torch.Tensor,
+                  action: torch.Tensor,
+                  sample_noise: bool = False) -> torch.Tensor:
+        self.qv.reset_noise()
+        if sample_noise:
+            self.qv.sample_noise()
         return self.qv(state, action)[0]
 
     def _compute_loss(self, batch: Batch) -> torch.Tensor:
@@ -46,6 +51,7 @@ class TD3(DDPG, agent_type='td3'):
             next_action = self.target_pi(next_state) + noise
             next_action = next_action.clamp(*self._action_limit)
 
+            self.target_qv.sample_noise()
             target_next_qs = self.target_qv(next_state, next_action)
             target_next_q = torch.min(*target_next_qs).view(-1, 1)
         target_q = utils.td_target(
@@ -53,6 +59,8 @@ class TD3(DDPG, agent_type='td3'):
             mask=batch.mask,
             target=target_next_q,
             discount=batch.discount_factor * self._discount)
+
+        self.qv.sample_noise()
         expected_q1, expected_q2 = self.qv(state, batch.action)
 
         loss = utils.mse_loss(expected_q1, target_q) + \

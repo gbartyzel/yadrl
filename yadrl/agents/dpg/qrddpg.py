@@ -16,9 +16,11 @@ class QuantileDDPG(DDPG):
             (np.arange(support_dim) + 0.5) / support_dim
         ).float().unsqueeze(0).to(self._device)
 
-    def _sample_q(self, state: torch.Tensor,
-                  action: torch.Tensor) -> torch.Tensor:
-        return super()._sample_q(state).mean(-1)
+    def _sample_q(self,
+                  state: torch.Tensor,
+                  action: torch.Tensor,
+                  sample_noise: bool = False) -> torch.Tensor:
+        return super()._sample_q(state, action, sample_noise).mean(-1)
 
     def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
         next_state = self._state_normalizer(batch.next_state, self._device)
