@@ -13,7 +13,7 @@ from yadrl.common.memory import Batch
 from yadrl.networks.head import Head
 
 
-class DDPG(OffPolicyAgent):
+class DDPG(OffPolicyAgent, agent_type='ddpg'):
     def __init__(self,
                  pi_lrate: float,
                  qv_lrate: float,
@@ -78,7 +78,7 @@ class DDPG(OffPolicyAgent):
                 'target_critic': target_critic_net}
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
-        state = super()._act(state, train)
+        state = super()._act(state)
         self.pi.eval()
         with torch.no_grad():
             action = self.pi(state)

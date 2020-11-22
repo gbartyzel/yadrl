@@ -1,5 +1,4 @@
-"""import copy
-from typing import NoReturn
+from copy import deepcopy
 
 import numpy as np
 import torch
@@ -9,14 +8,11 @@ import torch.optim as optim
 import yadrl.common.utils as utils
 from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.memory import Batch
-from yadrl.networks.heads.policy import GaussianPolicyHead
-from yadrl.networks.heads.value import DoubleValueHead
+from yadrl.networks.head import Head
 
 
-class SAC(OffPolicyAgent):
+class SAC(OffPolicyAgent, agent_type='sac'):
     def __init__(self,
-                 pi_phi: nn.Module,
-                 qv_phi: nn.Module,
                  pi_lrate: float,
                  qv_lrate: float,
                  temperature_lrate: float,
@@ -25,13 +21,10 @@ class SAC(OffPolicyAgent):
                  temperature_tuning: bool = True, **kwargs):
         super().__init__(**kwargs)
         self._pi_grad_norm_value = pi_grad_norm_value
-        self._qvs_grad_norm_value = qv_grad_norm_value
+        self._qv_grad_norm_value = qv_grad_norm_value
 
-        self._initialize_online_networks(pi_phi, qv_phi)
-        self._initialize_target_networks()
-
-        self._pi_optim = optim.Adam(self._pi.parameters(), pi_lrate)
-        self._qv_optim = optim.Adam(self._qv.parameters(), qv_lrate)
+        self._pi_optim = optim.Adam(self.pi.parameters(), pi_lrate)
+        self._qv_optim = optim.Adam(self.qv.parameters(), qv_lrate)
 
         self._temperature_tuning = temperature_tuning
         if temperature_tuning:
@@ -42,49 +35,81 @@ class SAC(OffPolicyAgent):
                                                  lr=temperature_lrate)
         self._temperature = 1.0 / self._reward_scaling
 
-    def _initialize_online_networks(self, pi_phi, qv_phi):
-        self._pi = GaussianPolicyHead(phi=pi_phi,
-                                      output_dim=self._action_dim,
-                                      independent_std=False,
-                                      squash=True).to(self._device)
-        self._qv = DoubleValueHead(phi=qv_phi).to(self._device)
+    @property
+    def pi(self):
+        return self._networks['actor']
 
-    def _initialize_target_networks(self):
-        self._target_qv = copy.deepcopy(self._qv).to(self._device)
-        self._target_qv.eval()
+    @property
+    def qv(self):
+        return self._networks['critic']
+
+    @property
+    def target_qv(self):
+        return self._networks['target_critic']
+
+    def _initialize_networks(self, phi):
+        actor_net = Head.build(head_type='squashed_gaussian',
+                               body=phi['actor'],
+                               output_dim=self._action_dim)
+        critic_net = Head.build(head_type='multi', body=phi['critic'])
+        target_critic_net = deepcopy(critic_net)
+        critic_net.to(self._device)
+        target_critic_net.to(self._device)
+        target_critic_net.eval()
+
+        return {'actor': actor_net,
+                'critic': critic_net,
+                'target_critic': target_critic_net}
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
-        state = torch.from_numpy(state).float().unsqueeze(0).to(self._device)
-        self._pi.eval()
+        state = super()._act(state)
+        self.pi.eval()
         with torch.no_grad():
-            action = self._pi(state, deterministic=not train)[0]
-        self._pi.train()
+            action = self.pi.get_action(state, not train)
+        self.pi.train()
         return action[0].cpu().numpy()
 
     def _update(self):
         batch = self._memory.sample(self._batch_size)
-        self._update_parameters(*self._compute_loses(batch))
-        self._update_target(self._qv, self._target_qv)
+        self._update_critic(batch)
+        if self._env_step % (self._policy_update_frequency *
+                             self._update_frequency) == 0:
+            self._update_actor_and_temperature(batch)
+            self._update_target(self.qv, self.target_qv)
 
-    def _compute_loses(self, batch: Batch):
-        state = self._state_normalizer(batch.primary)
+    def _update_critic(self, batch: Batch):
+        state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        next_action, log_prob, _ = self._pi(next_state)
-        target_next_q = torch.min(
-            *self._target_qv((next_state, next_action), train=True))
+        next_action = self.pi.sample(next_state)
+        log_prob = self.pi.log_prob(next_action)
+        self.target_qv.sample_noise()
+        target_next_q = torch.min(*self.target_qv(next_state, next_action))
         target_next_v = target_next_q - self._temperature * log_prob
         target_q = utils.td_target(
             reward=batch.reward,
             mask=batch.mask,
             target=target_next_v,
             discount=batch.discount_factor * self._discount).detach()
-        expected_qs = self._qv((state, batch.secondary), train=True)
+        self.qv.sample_noise()
+        expected_qs = self.qv(state, batch.action)
 
-        qs_loss = sum(utils.mse_loss(q, target_q) for q in expected_qs)
+        loss = sum(utils.mse_loss(q, target_q) for q in expected_qs)
 
-        action, log_prob, _ = self._pi(state)
-        target_log_prob = torch.min(*self._qv((state, action), train=True))
+        self._qv_optim.zero_grad()
+        loss.backward()
+        if self._qv_grad_norm_value > 0.0:
+            nn.utils.clip_grad_norm_(self.qv.parameters(),
+                                     self._qv_grad_norm_value)
+        self._qv_optim.step()
+
+    def _update_actor_and_temperature(self, batch: Batch):
+        state = self._state_normalizer(batch.state)
+
+        action = self.pi.sample(state)
+        log_prob = self.pi.log_prob(action)
+        self.qv.sample_noise()
+        target_log_prob = torch.min(*self.qv(state, action))
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         if self._temperature_tuning:
@@ -94,55 +119,24 @@ class SAC(OffPolicyAgent):
         else:
             temperature_loss = 0.0
 
-        return qs_loss, policy_loss, temperature_loss
-
-    def _update_parameters(self, qs_loss, policy_loss, alpha_loss):
-        self._qv_optim.zero_grad()
-        qs_loss.backward()
-        if self._qvs_grad_norm_value > 0.0:
-            nn.utils.clip_grad_norm_(self._qv.parameters(),
-                                     self._qvs_grad_norm_value)
-        self._qv_optim.step()
-
         self._pi_optim.zero_grad()
         policy_loss.backward()
         if self._pi_grad_norm_value > 0.0:
-            nn.utils.clip_grad_norm_(self._pi.parameters(),
+            nn.utils.clip_grad_norm_(self.pi.parameters(),
                                      self._pi_grad_norm_value)
         self._pi_optim.step()
 
         if self._temperature_tuning:
             self._temperature_optim.zero_grad()
-            alpha_loss.backward()
+            temperature_loss.backward()
             self._temperature_optim.step()
             self._temperature = self._log_temperature.exp().detach()
 
-    def load(self, path: str) -> NoReturn:
-        model = torch.load(path)
-        if model:
-            self._pi.load_state_dict(model['actor'])
-            self._qv.load_state_dict(model['critic'])
-            self._target_qv.load_state_dict(model['target_critic'])
-            self._step = model['step']
-            if 'state_norm' in model:
-                self._state_normalizer.load(model['state_norm'])
-
-    def save(self):
-        state_dict = dict()
-        state_dict['actor'] = self._pi.state_dict(),
-        state_dict['critic'] = self._qv.state_dict()
-        state_dict['target_critic'] = self._target_qv.state_dict()
-        state_dict['step'] = self._step
-        if self._use_state_normalization:
-            state_dict['state_norm'] = self._state_normalizer.state_dict()
-        torch.save(state_dict, 'model_{}.pth'.format(self._step))
-
     @property
     def parameters(self):
-        return list(self._qv.named_parameters()) + \
-               list(self._pi.named_parameters())
+        return list(self.qv.named_parameters()) + \
+               list(self.pi.named_parameters())
 
     @property
     def target_parameters(self):
-        return self._target_qv.named_parameters()
-"""
+        return self.target_qv.named_parameters()

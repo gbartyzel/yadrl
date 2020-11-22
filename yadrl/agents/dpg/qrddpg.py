@@ -6,7 +6,7 @@ from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
 
 
-class QuantileDDPG(DDPG):
+class QuantileDDPG(DDPG, agent_type='quantile_regression_ddpg'):
     def __init__(self,
                  support_dim: int = 100,
                  **kwargs):

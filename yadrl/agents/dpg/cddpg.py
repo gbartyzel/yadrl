@@ -7,7 +7,7 @@ from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
 
 
-class CategoricalDDPG(DDPG):
+class CategoricalDDPG(DDPG, agent_type='categorical_ddpg'):
     def __init__(self,
                  support_dim: int = 51,
                  v_limit: Tuple[float, float] = (-10.0, 10.0),
