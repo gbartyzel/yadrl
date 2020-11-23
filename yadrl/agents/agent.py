@@ -15,7 +15,7 @@ from yadrl.common.memory import ReplayMemory, Rollout
 from yadrl.common.normalizer import DummyNormalizer
 
 
-class BaseAgent(abc.ABC):
+class Agent(abc.ABC):
     registered_agents = {}
 
     def __init_subclass__(cls, agent_type: str = None, **kwargs):
@@ -25,6 +25,12 @@ class BaseAgent(abc.ABC):
 
     @classmethod
     def build(cls, agent_type: str, **kwargs):
+        import os
+        for file in os.listdir(os.path.dirname(__file__)):
+            if '__' in file:
+                continue
+            if os.path.isdir(os.path.join(os.path.dirname(__file__), file)):
+                exec('import yadrl.agents.' + file)
         return cls.registered_agents[agent_type](**kwargs)
 
     def __init__(self,
@@ -161,7 +167,7 @@ class BaseAgent(abc.ABC):
         return os.path.join(log_dir, now)
 
 
-class OffPolicyAgent(BaseAgent):
+class OffPolicyAgent(Agent):
 
     def __init__(self,
                  memory: ReplayMemory,

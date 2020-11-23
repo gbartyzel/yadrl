@@ -1,19 +1,20 @@
 cartpole_dqn:
-  agent_type: 'dqn'
+  agent_type: 'quantile_regression_dqn'
   env_id: 'CartPole-v0'
   common:
     discount_factor: 0.99
     n_step: 1
     batch_size: 64
+    support_dim: 100
     reward_scaling: 1.0
     warm_up_steps: 1000
-    polyak_factor: 0.0,
-    target_update_frequency: 1000
+    polyak_factor: 0.0
+    target_update_frequency: 100
     update_frequency: 1
     update_steps: 1
     seed: 1337
   specific:
-    learning_rate: 0.001
+    learning_rate: 0.0005
   state_normalizer:
     type: null
     parameters: null
@@ -22,19 +23,20 @@ cartpole_dqn:
     type: 'linear'
     parameters:
       start_value: 1.0
-      end_value: 0.01
-      annealing_steps: 10000
+      end_value: 0.05
+      annealing_steps: 1000
   memory:
-    capacity: 100
+    capacity: 10000
     combined: False
+    torch_backend: True
   body:
     input:
-      primary: 6
+      primary: 4
     layers:
-      - out_dim: 128
+      - out_dim: 32
         activation: 'relu'
         layer_type: 'linear'
-      - out_dim: 128
+      - out_dim: 32
         activation: 'relu'
         layer_type: 'linear'
 

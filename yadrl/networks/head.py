@@ -1,6 +1,7 @@
 from typing import Sequence, Tuple
 
 import torch as th
+import torch.distributions as td
 import torch.nn as nn
 
 from yadrl.networks.body import Body
@@ -48,7 +49,7 @@ class Head(nn.Module):
         self.reset_noise()
 
     def forward(self, *input_data: th.Tensor) -> th.Tensor:
-        out = self._phi(input_data)
+        out = self._phi(*input_data)
         return out
 
     def sample_noise(self):
@@ -187,10 +188,8 @@ class GaussianHead(DistributionHead, head_type='gaussian'):
                          **kwargs)
         self._output_dim = output_dim
 
-    def forward(self,
-                input_data: th.Tensor,
-                sample_noise: bool = False) -> th.Tensor:
-        out = super().forward(input_data, sample_noise)
+    def forward(self, input_data: th.Tensor) -> th.Tensor:
+        out = super().forward(input_data)
         mean, log_std = out.split(self._output_dim, -1)
         return mean, log_std
 
@@ -220,9 +219,7 @@ class SquashedGaussianHead(GaussianHead, head_type='squashed_gaussian'):
         super().__init__(**kwargs)
         self._log_std_limit = log_std_limit
 
-    def forward(self,
-                input_data: th.Tensor,
-                sample_noise: bool = False) -> th.Tensor:
+    def forward(self, input_data: th.Tensor) -> th.Tensor:
         mean, log_std = super().forward(input_data)
         return mean, log_std.clamp(*self._log_std_limit)
 

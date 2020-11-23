@@ -22,22 +22,25 @@ class Configuration:
     common: T_CONFIG = field(init=False)
     specific: T_CONFIG = field(init=False)
     state_normalizer: Any = field(init=False)
-    exploration_strategy: Any = field(init=False)
-    memory: Any = field(init=False)
+    exploration_strategy: Any = field(init=False, default=None)
+    memory: Any = field(init=False, default=None)
     body: Body = field(init=False)
     config_path: InitVar[str]
 
     def __post_init__(self, config_path: str):
         data, self.experiment_name = self.__load_config(config_path)
-        self.agent_type = data['type']
+        self.agent_type = data['agent_type']
         self.common = data['common']
         self.specific = data['specific']
-        self.memory = ReplayMemory(**data['memory'])
+        if 'memory' in data:
+            self.memory = ReplayMemory(**data['memory'])
         self.state_normalizer = self.__parse_state_normalizer(
             data['state_normalizer'])
-        self.exploration_strategy = self.__parse_exploration_strategy(
-            data['exploration_strategy'])
+        if 'exploration_strategy' in data:
+            self.exploration_strategy = self.__parse_exploration_strategy(
+                data['exploration_strategy'])
         self.body = Body(BodyParameters(data['body']))
+        self.env = gym.make(data['env_id'])
 
     @staticmethod
     def __load_config(config_path: str) -> Tuple[T_CONFIG, str]:

@@ -1,39 +1,53 @@
 import argparse
+import collections
+from dataclasses import asdict
 
-import yaml
-
-from yadrl.agents.agent import BaseAgent
+from yadrl.agents.agent import Agent
 from yadrl.common.configuration import Configuration
+
+
+def flatten_dictionary(in_dict):
+    items: dict = {}
+    for k, v in in_dict.items():
+        if isinstance(v, collections.abc.MutableMapping):
+            items.update(flatten_dictionary(v).items())
+        else:
+            items.update({k: v})
+    return items
 
 
 class Runner:
     def __init__(self):
-        args = self._parse_arguments()
-        self._test_flag = args.test
+        args: argparse.Namespace = self._parse_arguments()
+        self._test_flag: bool = args.test
+        self._num_train_steps: int = args.num_train_steps
+        self._config: Configuration = Configuration(args.config_path)
+        self._agent: Agent = self._create_agent()
+        self.start()
 
-    def _load_configuration(self, path):
-        config_file = open(path, 'r')
-        config = yaml.safe_load(config_file)
-        config_file.close()
-        return config
+    def start(self):
+        if self._test_flag:
+            self._agent.eval()
+        else:
+            self._agent.train(self._num_train_steps)
+
+    def _create_agent(self) -> Agent:
+        dict_config: dict = asdict(self._config)
+        for k, v in dict_config.items():
+            if v is None: dict_config.pop(k)
+        return Agent.build(**flatten_dictionary(dict_config))
 
     @staticmethod
-    def _parse_arguments():
+    def _parse_arguments() -> argparse.Namespace:
         parser = argparse.ArgumentParser()
         parser.add_argument('--test', action='store_true')
+        parser.add_argument('--num_train_steps', type=int, default=100000)
         parser.add_argument('--config_path', type=str, required=True)
         return parser.parse_args()
 
 
 def main():
-    args = _parse_arguments()
-    configs = Configuration(config_path=args.config_path)
-    agent = BaseAgent.build(agent_type=configs.agent_type,
-                            memory=configs.memory,
-                            exploration_strategy=configs.exploration_strategy,
-                            **configs.common,
-                            **configs.specific)
-    agent.train(100000)
+    Runner()
 
 
 if __name__ == '__main__':
