@@ -2,7 +2,7 @@ from typing import Tuple
 
 import torch
 
-import yadrl.common.utils as utils
+import yadrl.common.ops as utils
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
 

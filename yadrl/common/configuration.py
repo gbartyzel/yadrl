@@ -32,10 +32,10 @@ class Configuration:
         self.agent_type = data['agent_type']
         self.common = data['common']
         self.specific = data['specific']
-        if 'memory' in data:
-            self.memory = ReplayMemory(**data['memory'])
         self.state_normalizer = self.__parse_state_normalizer(
             data['state_normalizer'])
+        if 'memory' in data:
+            self.memory = ReplayMemory(**data['memory'])
         if 'exploration_strategy' in data:
             self.exploration_strategy = self.__parse_exploration_strategy(
                 data['exploration_strategy'])

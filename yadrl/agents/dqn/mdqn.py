@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-import yadrl.common.utils as utils
+import yadrl.common.ops as utils
 from yadrl.agents.dqn.dqn import DQN
 
 

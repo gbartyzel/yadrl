@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import yadrl.common.utils as utils
+import yadrl.common.ops as utils
 from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.scheduler import BaseScheduler
 from yadrl.networks.head import Head

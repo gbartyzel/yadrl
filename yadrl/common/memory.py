@@ -1,8 +1,5 @@
-from collections import deque
-from collections import namedtuple
-from typing import List
-from typing import Tuple
-from typing import Union
+from collections import deque, namedtuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -122,11 +119,3 @@ class Rollout:
             discount = self._discount_factor ** t
             cum_reward += discount * self._buffer[t][2]
         return cum_reward, discount
-
-
-if __name__ == '__main__':
-    rollout = Rollout(1, 0.99)
-    for i in range(6):
-        mask = i == 5
-        tran = rollout(i, i, 1, i+1, mask)
-        print(tran)

@@ -4,6 +4,7 @@ from typing import Callable, Dict, List
 import torch
 import torch.nn as nn
 
+import yadrl.common.ops as ops
 import yadrl.networks.noisy_linear as nl
 
 normalizations: Dict[str, Callable] = {
@@ -30,7 +31,7 @@ activation_fn: Dict[str, nn.Module] = {
 
 
 class Layer(nn.Module, abc.ABC):
-    registered_layer = {}
+    registered_layer: Dict[str, 'Layer'] = {}
 
     def __init_subclass__(cls, layer_type: str, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -49,6 +50,7 @@ class Layer(nn.Module, abc.ABC):
                  normalization: str = 'none',
                  dropout_prob: float = 0.0,
                  num_group: int = 6,
+                 layer_init: Callable = None,
                  **kwargs):
         super().__init__()
         self.in_dim: int = in_dim
@@ -58,6 +60,8 @@ class Layer(nn.Module, abc.ABC):
         self._module: nn.Module = self._make_module(activation, normalization,
                                                     dropout_prob, num_group,
                                                     **kwargs)
+        if layer_init is not None:
+            layer_init(self._module[0])
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         return self._module(input_data)
@@ -76,7 +80,7 @@ class Layer(nn.Module, abc.ABC):
                      dropout_prob: float,
                      num_group: int,
                      **kwargs) -> nn.Module:
-        block: List[nn.Module] = [
+        block = [
             self._get_layer(**kwargs),
             self._get_normalization(normalization, num_group),
             activation_fn[activation],
@@ -103,16 +107,27 @@ class Layer(nn.Module, abc.ABC):
 
 
 class Linear(Layer, layer_type='linear'):
+    def __init__(self, **kwargs):
+        if 'layer_init' not in kwargs:
+            kwargs['layer_init'] = ops.orthogonal_init
+        super().__init__(**kwargs)
+
     def _get_layer(self, **kwargs) -> nn.Module:
         return nn.Linear(self.in_dim, self.out_dim, **kwargs)
 
 
 class FactorizedLinear(Layer, layer_type='factorized_noisy_linear'):
+    def __init__(self, **kwargs):
+        super().__init__(layer_init=None, **kwargs)
+
     def _get_layer(self, **kwargs) -> nn.Module:
         return nl.FactorizedNoisyLinear(self.in_dim, self.out_dim, **kwargs)
 
 
 class IndependentLinear(Layer, layer_type='independent_noisy_linear'):
+    def __init__(self, **kwargs):
+        super().__init__(layer_init=None, **kwargs)
+
     def _get_layer(self, **kwargs) -> nn.Module:
         return nl.IndependentNoisyLinear(self.in_dim, self.out_dim, **kwargs)
 
@@ -126,7 +141,9 @@ class Conv1d(Layer, layer_type='conv2d'):
 
 class Conv2d(Layer, layer_type='conv2d'):
     def _get_layer(self, **kwargs) -> nn.Module:
-        return nn.Conv2d(**kwargs)
+        return nn.Conv2d(in_channels=self.in_dim,
+                         out_channels=self.out_dim,
+                         **kwargs)
 
     def _get_dropout(self, dropout_prob: float) -> nn.Module:
         if dropout_prob > 0:

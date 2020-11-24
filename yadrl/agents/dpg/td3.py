@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import torch
 
-import yadrl.common.utils as utils
+import yadrl.common.ops as utils
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch

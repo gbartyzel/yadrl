@@ -1,7 +1,5 @@
 import abc
-import datetime
-import os
-from typing import Any, Union
+from typing import Any, Dict, Union
 
 import gym
 import numpy as np
@@ -11,6 +9,7 @@ import tqdm
 from gym.spaces.box import Box
 from torch.utils.tensorboard import SummaryWriter
 
+import yadrl.common.ops as ops
 from yadrl.common.memory import ReplayMemory, Rollout
 from yadrl.common.normalizer import DummyNormalizer
 
@@ -42,14 +41,15 @@ class Agent(abc.ABC):
                  batch_size: int = 64,
                  n_step: int = 1,
                  update_steps: int = 1,
-                 experiment_name: str = './output',
+                 experiment_name: str = '',
+                 log_path: str = './output',
                  seed: int = 1337):
         super().__init__()
         self._env = env
         self._state = None
         self._env_step = 0
         self._optimizer_step = 0
-        self._set_seeds(seed)
+        ops.set_seeds(seed)
         self._data_to_log = dict()
 
         self._device = torch.device(
@@ -70,7 +70,8 @@ class Agent(abc.ABC):
         self._rollout = Rollout(length=n_step, discount_factor=discount_factor)
         self._state_normalizer = state_normalizer
 
-        self._writer = SummaryWriter(self._create_logdir(experiment_name))
+        self._writer = SummaryWriter(
+            ops.create_log_dir(log_path, experiment_name))
 
         self._networks = self._initialize_networks(body)
 
@@ -127,14 +128,10 @@ class Agent(abc.ABC):
         for k, v in self._data_to_log.items():
             self._writer.add_scalar(k, v, self._env_step)
 
-        """
-        for name, param in self.parameters:
-            self._writer.add_histogram(
-                'main/{}'.format(name), param, self._env_step)
-        for name, param in self.target_parameters:
-            self._writer.add_histogram(
-                'target/{}'.format(name), param, self._env_step)
-        """
+        for name, module in self._networks.items():
+            for p_name, param in module.named_parameters():
+                self._writer.add_histogram('{}/{}'.format(name, p_name),
+                                           param, self._env_step)
 
     @property
     @abc.abstractmethod
@@ -151,20 +148,8 @@ class Agent(abc.ABC):
         return NotImplementedError
 
     @abc.abstractmethod
-    def _initialize_networks(self, *args, **kwargs):
+    def _initialize_networks(self, phi: nn.Module) -> Dict[str, nn.Module]:
         return NotImplementedError
-
-    @staticmethod
-    def _set_seeds(seed):
-        torch.random.manual_seed(seed)
-        np.random.seed(seed)
-
-    @staticmethod
-    def _create_logdir(log_dir: str) -> str:
-        if not os.path.isdir(log_dir):
-            os.mkdir(log_dir)
-        now = datetime.datetime.now().strftime('%d_%m_%y_%H_%M_%S')
-        return os.path.join(log_dir, now)
 
 
 class OffPolicyAgent(Agent):

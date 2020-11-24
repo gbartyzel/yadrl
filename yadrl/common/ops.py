@@ -1,4 +1,18 @@
+import datetime
+import os
+
+import numpy as np
 import torch
+
+
+def uniform_init(x: torch.nn.Module, low: float = -3e-3, high: float = 3e-3):
+    torch.nn.init.uniform_(x.weight.data, low, high)
+    torch.nn.init.uniform_(x.bias, low, high)
+
+
+def orthogonal_init(x: torch.nn.Module):
+    torch.nn.init.orthogonal_(x.weight.data, gain=np.sqrt(2))
+    torch.nn.init.constant_(x.bias.data, 0.0)
 
 
 def to_tensor(data, device):
@@ -78,3 +92,16 @@ def l2_projection(next_probs: torch.Tensor,
     target_probs = (1.0 - (target_atoms - atoms).abs() / z_delta).clamp(0, 1)
     target_probs *= next_probs
     return target_probs.sum(0)
+
+
+def set_seeds(seed: int = 1337):
+    torch.random.manual_seed(seed)
+    np.random.seed(seed)
+
+
+def create_log_dir(log_dir: str, experiment_name: str) -> str:
+    if not os.path.isdir(log_dir):
+        os.mkdir(log_dir)
+    now = datetime.datetime.now().strftime('%d_%m_%y_%H_%M_%S')
+    log_name = '{}_{}'.format(experiment_name, now)
+    return os.path.join(log_dir, log_name)
