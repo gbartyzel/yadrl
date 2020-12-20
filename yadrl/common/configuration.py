@@ -34,13 +34,16 @@ class Configuration:
         self.specific = data['specific']
         self.state_normalizer = self.__parse_state_normalizer(
             data['state_normalizer'])
+        self.env = gym.make(data['env_id'])
         if 'memory' in data:
-            self.memory = ReplayMemory(**data['memory'])
+            self.memory = ReplayMemory(
+                **data['memory'],
+                observation_space=self.env.observation_space,
+                action_space=self.env.action_space)
         if 'exploration_strategy' in data:
             self.exploration_strategy = self.__parse_exploration_strategy(
                 data['exploration_strategy'])
         self.body = Body(BodyParameters(data['body']))
-        self.env = gym.make(data['env_id'])
 
     @staticmethod
     def __load_config(config_path: str) -> Tuple[T_CONFIG, str]:

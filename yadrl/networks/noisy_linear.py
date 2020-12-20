@@ -12,20 +12,22 @@ class FactorizedNoisyLinear(nn.Linear):
                  bias: bool = True):
         self.mu_init = 1.0 / np.sqrt(in_features)
         self.sigma_init = sigma_init / np.sqrt(in_features)
+        super().__init__(in_features, out_features, bias)
         self.weight_sigma = nn.Parameter(
             th.Tensor(out_features, in_features), requires_grad=True)
         self.bias_sigma = nn.Parameter(th.Tensor(out_features),
                                        requires_grad=True)
         self.register_buffer('noise_in', th.zeros(1, in_features))
         self.register_buffer('noise_out', th.zeros(out_features, 1))
-        super().__init__(in_features, out_features, bias)
+
+        self.weight_sigma.data.fill_(self.sigma_init)
+        if bias:
+            self.bias_sigma.data.fill_(self.sigma_init)
 
     def reset_parameters(self) -> None:
         self.weight.data.uniform_(-self.mu_init, self.mu_init)
-        self.weight_sigma.data.fill_(self.sigma_init)
-        if self.bias:
+        if self.bias is not None:
             self.bias.data.uniform_(-self.mu_init, self.mu_init)
-            self.weight_sigma.data.fill_(self.sigma_init)
 
     def forward(self, input_data: th.Tensor) -> th.Tensor:
         bias = self.bias
@@ -58,6 +60,7 @@ class IndependentNoisyLinear(nn.Linear):
                  bias: bool = True):
         self.mu_init = np.sqrt(3.0 / self.in_features)
         self.sigma_init = sigma_init
+        super().__init__(in_features, out_features, bias)
         self.weight_sigma = nn.Parameter(
             th.Tensor(out_features, in_features), requires_grad=True)
         self.bias_sigma = nn.Parameter(th.Tensor(out_features),
@@ -65,11 +68,12 @@ class IndependentNoisyLinear(nn.Linear):
         self.register_buffer('weight_eps',
                              th.zeros(out_features, in_features))
         self.register_buffer('bias_eps', th.zeros(out_features))
-        super().__init__(in_features, out_features, bias)
+        self.weight_sigma.data.fill_(self.sigma_init)
+        if self.bias:
+            self.bias_sigma.data.fill_(self.sigma_init)
 
     def reset_parameters(self) -> None:
         self.weight.data.uniform_(-self.mu_init, self.mu_init)
-        self.weight_sigma.data.fill_(self.sigma_init)
         if self.bias:
             self.bias.data.uniform_(-self.mu_init, self.mu_init)
             self.bias_sigma.data.fill_(self.sigma_init)

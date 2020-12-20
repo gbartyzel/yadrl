@@ -67,13 +67,16 @@ class Agent(abc.ABC):
         self._reward_scaling = reward_scaling
         self._update_steps = update_steps
 
-        self._rollout = Rollout(length=n_step, discount_factor=discount_factor)
+        self._rollout = Rollout(capacity=n_step,
+                                action_space=self._env.action_space,
+                                observation_space=self._env.observation_space)
         self._state_normalizer = state_normalizer
 
         self._writer = SummaryWriter(
             ops.create_log_dir(log_path, experiment_name))
 
         self._networks = self._initialize_networks(body)
+        print(self._networks)
 
     def train(self, max_steps: int):
         pass
@@ -193,7 +196,9 @@ class OffPolicyAgent(Agent):
                  next_state: Union[np.ndarray, torch.Tensor],
                  done: Any):
         self._state_normalizer.update(state)
-        transition = self._rollout(state, action, reward, next_state, done)
+        self._rollout.push(state, action, reward, next_state, done,
+                           self._discount)
+        transition = self._rollout.sample()
         if transition is None:
             return
         for t in transition:

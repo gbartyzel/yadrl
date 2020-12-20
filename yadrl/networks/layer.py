@@ -118,7 +118,8 @@ class Linear(Layer, layer_type='linear'):
 
 class FactorizedLinear(Layer, layer_type='factorized_noisy_linear'):
     def __init__(self, **kwargs):
-        super().__init__(layer_init=None, **kwargs)
+        kwargs['layer_init'] = None
+        super().__init__(**kwargs)
 
     def _get_layer(self, **kwargs) -> nn.Module:
         return nl.FactorizedNoisyLinear(self.in_dim, self.out_dim, **kwargs)

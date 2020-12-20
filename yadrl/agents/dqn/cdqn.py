@@ -1,17 +1,19 @@
 from typing import Tuple
 
 import torch
+import torch.nn.functional as F
 
 import yadrl.common.ops as utils
 from yadrl.agents.dqn.dqn import DQN
 
 
 class CategoricalDQN(DQN, agent_type='categorical_dqn'):
-    head_types = ['categorical', 'dueling_categorical']
+    head_types = ['categorical', 'distribution_dueling']
 
     def __init__(self,
                  v_limit: Tuple[float, float] = (-100.0, 100.0),
                  support_dim: int = 51, **kwargs):
+        self._support_dim = support_dim
         super().__init__(**kwargs)
         self._v_limit = v_limit
         self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
@@ -19,7 +21,7 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
 
     def _sample_q(self, state: torch.Tensor,
                   train: bool = False) -> torch.Tensor:
-        probs = super()._sample_q(state, train).exp()
+        probs = F.softmax(super()._sample_q(state, train), -1)
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_loss(self, batch):
@@ -29,11 +31,12 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
 
         with torch.no_grad():
             self.target_model.sample_noise()
-            next_probs = self.target_model(next_state).exp()
+            next_probs = F.softmax(self.target_model(next_state).exp(), -1)
             exp_atoms = self._atoms.expand_as(next_probs)
             if self._use_double_q:
                 self.model.sample_noise()
-                next_q = self.model(next_state).exp().mul(exp_atoms).sum(-1)
+                next_double_probs = F.softmax(self.model(next_state), -1)
+                next_q = next_double_probs.mul(exp_atoms).sum(-1)
             else:
                 next_q = next_probs.mul(exp_atoms).sum(-1)
             next_action = next_q.argmax(-1).long()
@@ -50,7 +53,7 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
             target_atoms=target_atoms)
 
         self.model.sample_noise()
-        log_probs = self.model(state)
+        log_probs = F.log_softmax(self.model(state), -1)
         log_probs = log_probs[batch_vec, batch.action.squeeze().long(), :]
         loss = torch.mean(-(target_probs * log_probs).sum(-1))
         return loss

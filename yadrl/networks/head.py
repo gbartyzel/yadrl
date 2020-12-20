@@ -51,7 +51,7 @@ class Head(nn.Module):
             self._make_module(self._output_dim * self._support_dim)])
         self.reset_noise()
 
-    def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
+    def _forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         return self._phi(*input_data)
 
     def sample_noise(self):
@@ -78,13 +78,14 @@ class Head(nn.Module):
         return nn.Sequential(*layers)
 
     def _get_act_fn(self, iteration: int, last_iteration: int) -> str:
-        if iteration + 1 == last_iteration - 2:
+        if iteration + 1 == last_iteration - 1:
             return self._output_act_fn
         return self._hidden_act_fn
 
     @staticmethod
     def _get_init_fn(iteration: int, last_iteration: int) -> Callable:
-        if iteration + 1 == last_iteration - 2:
+        print(iteration, last_iteration)
+        if iteration + 1 == last_iteration - 1:
             return ops.uniform_init
         return None
 
@@ -94,7 +95,7 @@ class SimpleHead(Head, head_type='simple'):
         super().__init__(**kwargs)
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
-        out = super().forward(*input_data)
+        out = self._forward(*input_data)
         return self._heads[0](out)
 
 
@@ -118,27 +119,19 @@ class DuelingHead(Head, head_type='dueling'):
         self._heads.append(self._make_module(self._support_dim))
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
-        out = super().forward(*input_data)
-        advantage, value = [module(out) for module in self._moduels]
+        out = self._forward(*input_data)
+        advantage, value = [head(out) for head in self._heads]
         advantage += value - advantage.mean(1, True)
         return advantage
 
 
-class QuantileDuelingHead(DuelingHead, head_type='quantile_dueling'):
+class DistributionDuelingHead(DuelingHead, head_type='distribution_dueling'):
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
-        out = super().forward(*input_data)
-        advantage, value = [module(out) for module in self._moduels]
+        out = self._forward(*input_data)
+        advantage, value = [head(out) for head in self._heads]
         advantage = advantage.view(-1, self._output_dim, self._support_dim)
         value = value.view(-1, 1, self._support_dim)
-        advantage += value - advantage.mean(1, True)
-        return advantage
-
-
-class CategoricalDuelingHead(QuantileDuelingHead,
-                             head_type='categorical_dueling'):
-    def __init__(self, **kwargs):
-        super().__init__(output_activation='log_softmax', **kwargs)
-
+        return advantage + value - advantage.mean(1, True)
 
 class MultiHead(Head, head_type='multi'):
     def __init__(self, num_heads: int = 2, **kwargs):
@@ -197,7 +190,7 @@ class GaussianHead(DistributionHead, head_type='gaussian'):
         self._output_dim = output_dim
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> Sequence[th.Tensor]:
-        out = super().forward(*input_data)
+        out = self._forward(*input_data)
         mean, log_std = out.split(self._output_dim, -1)
         return mean, log_std
 
