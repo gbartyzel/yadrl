@@ -2,10 +2,8 @@ import copy
 import random
 from typing import Dict
 
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 import yadrl.common.ops as ops
@@ -23,40 +21,21 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
                  exploration_strategy: BaseScheduler = BaseScheduler(),
                  noise_type: str = 'none',
                  adam_eps: float = 0.0003125,
-                 alpha: float = 0.9,
-                 lower_clamp: float = -1.0,
-                 temperature_tuning: bool = True,
-                 temperature_learning_rate: float = 0.0005,
                  use_double_q: bool = False,
                  use_dueling: bool = False,
                  use_huber_loss_fn: bool = True,
-                 use_munchausen: bool = False,
                  **kwargs):
         self._noise_type = noise_type
         self._use_dueling = use_dueling
         super().__init__(**kwargs)
-
         self._grad_norm_value = grad_norm_value
-        self._alpha = alpha
-        self._lower_clamp = lower_clamp
-        self._temperature_tuning = temperature_tuning
 
         self._use_double_q = use_double_q
         self._use_huber_loss_fn = use_huber_loss_fn
-        self._use_munchausen = use_munchausen
 
         self._epsilon_scheduler = exploration_strategy
         self._optim = optim.Adam(self.model.parameters(), lr=learning_rate,
                                  eps=adam_eps)
-
-        if use_munchausen:
-            if temperature_tuning:
-                self._target_entropy = -np.prod(self._action_dim)
-                self._log_temperature = torch.zeros(
-                    1, requires_grad=True, device=self._device)
-                self._entropy_optim = optim.Adam([self._log_temperature],
-                                                 lr=temperature_learning_rate)
-            self._temperature = 1.0 / self._reward_scaling
 
     @property
     def model(self) -> nn.Module:
@@ -111,13 +90,9 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
 
     def _update(self):
         batch = self._memory.sample(self._batch_size)
-        if self._use_munchausen:
-            self._update_temperature(batch)
-            loss = self._compute_munchausen_loss(batch)
-        else:
-            loss = self._compute_loss(batch)
+        loss = self._compute_loss(batch)
 
-        self._writer.add_scalar('loss/q', loss, self._env_step)
+        self._writer.add_scalar('loss/q_value', loss, self._env_step)
         self._optim.zero_grad()
         loss.backward()
         if self._grad_norm_value > 0.0:
@@ -151,44 +126,3 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         if self._use_huber_loss_fn:
             return ops.huber_loss(expected_q, target_q)
         return ops.mse_loss(expected_q, target_q)
-
-    def _compute_munchausen_loss(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
-        next_state = self._state_normalizer(batch.next_state, self._device)
-
-        with torch.no_grad():
-            self.target_model.sample_noise()
-            target_q_next = self.target_model(next_state)
-            next_pi = F.softmax(target_q_next / self._temperature, -1)
-            next_log_pi = ops.scaled_log_softmax(target_q_next,
-                                                 self._temperature)
-            m_log_pi = ops.scaled_log_softmax(self.target_model(state),
-                                              self._temperature)
-            m_log_pi = m_log_pi.gather(1, batch.action.long())
-
-            m_reward = batch.reward + self._alpha * m_log_pi.clamp(
-                self._lower_clamp, 0.0)
-            target_q = ops.td_target(
-                reward=m_reward,
-                mask=batch.mask,
-                target=(next_pi * (target_q_next - next_log_pi)).sum(-1, True),
-                discount=batch.discount_factor * self._discount)
-
-        expected_q = self.model(state).gather(1, batch.action.long())
-        if self._use_huber_loss_fn:
-            return ops.huber_loss(expected_q, target_q)
-        return ops.mse_loss(expected_q, target_q)
-
-    def _update_temperature(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
-        q_value = self._sample_q(state, True)
-        log_pi = ops.scaled_log_softmax(q_value, self._temperature)
-        loss = torch.mean(-self._log_temperature
-                          * (log_pi + self._target_entropy).detach())
-
-        self._entropy_optim.zero_grad()
-        loss.backward()
-        self._entropy_optim.step()
-        self._temperature = self._log_temperature.exp().detach()
-
-        self._writer.add_scalar('loss/entropy', loss, self._env_step)

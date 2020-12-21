@@ -15,10 +15,10 @@ def orthogonal_init(x: th.nn.Module):
     th.nn.init.constant_(x.bias.data, 0.0)
 
 
-def scaled_log_softmax(input_value: th.Tensor,
-                       term: float,
-                       dim: int = -1,
-                       keepdim: bool = True) -> th.Tensor:
+def scaled_logsoftmax(input_value: th.Tensor,
+                      term: float,
+                      dim: int = -1,
+                      keepdim: bool = True) -> th.Tensor:
     diff = input_value - input_value.max(dim, keepdim)[0]
     return diff - term * th.log(th.exp(diff / term).sum(dim, keepdim))
 
@@ -71,7 +71,8 @@ def quantile_hubber_loss(prediction: th.Tensor,
     prediction = prediction.unsqueeze(0)
     diff = transpose_target - prediction
     loss = huber_loss(prediction, transpose_target, delta, 'none')
-    loss *= th.abs(cumulative_density - (diff < 0.0).float())
+    loss = loss * th.abs(
+        cumulative_density - (diff.detach() < 0.0).float()) / delta
     loss = loss.mean(0).sum(-1)
 
     if reduction == 'mean':
