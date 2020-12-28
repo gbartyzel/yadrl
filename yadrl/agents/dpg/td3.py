@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import torch
 
-import yadrl.common.ops as utils
+import yadrl.common.ops as ops
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
@@ -17,11 +17,11 @@ class TD3(DDPG, agent_type='td3'):
         super().__init__(**kwargs)
         self._target_noise_limit = (-target_noise_limit, target_noise_limit)
         self._target_noise = GaussianNoise(
-            self._action_dim, sigma=target_noise_std)
+            self._action_dim, sigma=target_noise_std, n_step_annealing=0)
 
     def _initialize_networks(self, phi):
         networks = super()._initialize_networks(phi)
-        critic_net = Head.build(head_type='multi', body=phi['critic'],
+        critic_net = Head.build(head_type='multi', phi=phi['critic'],
                                 output_dim=1, num_heads=2)
         target_critic_net = deepcopy(critic_net)
         critic_net.to(self._device)
@@ -39,11 +39,11 @@ class TD3(DDPG, agent_type='td3'):
         self.qv.reset_noise()
         if sample_noise:
             self.qv.sample_noise()
-        return self.qv(state, action)[0]
+        return self.qv.evaluate_head(state, action, idx=0)
 
-    def _compute_loss(self, batch: Batch) -> torch.Tensor:
-        state = self._state_normalizer(batch.state)
-        next_state = self._state_normalizer(batch.next_state)
+    def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
+        state = self._state_normalizer(batch.state, self._device)
+        next_state = self._state_normalizer(batch.next_state, self._device)
 
         with torch.no_grad():
             noise = self._target_noise().clamp(
@@ -54,15 +54,9 @@ class TD3(DDPG, agent_type='td3'):
             self.target_qv.sample_noise()
             target_next_qs = self.target_qv(next_state, next_action)
             target_next_q = torch.min(*target_next_qs).view(-1, 1)
-        target_q = utils.td_target(
-            reward=batch.reward,
-            mask=batch.mask,
-            target=target_next_q,
-            discount=batch.discount_factor * self._discount)
+            target_q = ops.td_target(batch.reward, batch.mask, target_next_q,
+                                     batch.discount_factor * self._discount)
 
         self.qv.sample_noise()
-        expected_q1, expected_q2 = self.qv(state, batch.action)
-
-        loss = utils.mse_loss(expected_q1, target_q) + \
-               utils.mse_loss(expected_q2, target_q)
-        return loss
+        expected_qs = self.qv(state, batch.action)
+        return sum([ops.mse_loss(q, target_q) for q in expected_qs])

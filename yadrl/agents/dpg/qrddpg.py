@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-import yadrl.common.ops as utils
+import yadrl.common.ops as ops
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
 
@@ -30,16 +30,12 @@ class QuantileDDPG(DDPG, agent_type='quantile_regression_ddpg'):
             next_action = self.target_pi(next_state)
             self.target_qv.sample_noise()
             next_quantiles = self.target_qv(next_state, next_action)
-        target_quantiles = utils.td_target(
-            reward=batch.reward,
-            mask=batch.mask,
-            target=next_quantiles,
-            discount=batch.discount_factor * self._discount)
+            target_quantiles = ops.td_target(
+                batch.reward, batch.mask, next_quantiles,
+                batch.discount_factor * self._discount)
 
         self.qv.sample_noise()
         expected_quantiles = self.qv(state, batch.action)
-        loss = utils.quantile_hubber_loss(
-            prediction=expected_quantiles,
-            target=target_quantiles,
-            cumulative_density=self._cumulative_density)
+        loss = ops.quantile_hubber_loss(expected_quantiles, target_quantiles,
+                                        self._cumulative_density)
         return loss

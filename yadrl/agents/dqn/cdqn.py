@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-import yadrl.common.ops as utils
+import yadrl.common.ops as ops
 from yadrl.agents.dqn.dqn import DQN
 
 
@@ -42,15 +42,9 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
             next_action = next_q.argmax(-1).long()
             next_probs = next_probs[batch_vec, next_action, :]
 
-        target_atoms = utils.td_target(
-            reward=batch.reward,
-            mask=batch.mask,
-            target=self._atoms,
-            discount=batch.discount_factor * self._discount)
-        target_probs = utils.l2_projection(
-            next_probs=next_probs,
-            atoms=self._atoms,
-            target_atoms=target_atoms)
+        target_atoms = ops.td_target(batch.reward, batch.mask, self._atoms,
+                                     batch.discount_factor * self._discount)
+        target_probs = ops.l2_projection(next_probs, self._atoms, target_atoms)
 
         self.model.sample_noise()
         log_probs = F.log_softmax(self.model(state), -1)

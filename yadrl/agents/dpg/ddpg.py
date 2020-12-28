@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import yadrl.common.ops as utils
+import yadrl.common.ops as ops
 from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
@@ -15,15 +15,15 @@ from yadrl.networks.head import Head
 
 class DDPG(OffPolicyAgent, agent_type='ddpg'):
     def __init__(self,
-                 pi_lrate: float,
-                 qv_lrate: float,
+                 pi_learning_rate: float,
+                 qv_learning_rate: float,
                  action_limit: Sequence[float],
                  exploration_strategy: GaussianNoise,
                  noise_scale_factor: float = 1.0,
                  l2_lambda: float = 0.01,
                  pi_grad_norm_value: float = 0.0,
                  qv_grad_norm_value: float = 0.0,
-                 policy_update_frequency: int = 2,
+                 policy_update_frequency: int = 1,
                  **kwargs):
         super().__init__(**kwargs)
         assert np.shape(action_limit) == (2,), "Wrong action limit!"
@@ -34,8 +34,8 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         self._qv_grad_norm_value = qv_grad_norm_value
         self._l2_lambda = l2_lambda
 
-        self._pi_optim = optim.Adam(self.pi.parameters(), pi_lrate)
-        self._qv_optim = optim.Adam(self.qv.parameters(), qv_lrate)
+        self._pi_optim = optim.Adam(self.pi.parameters(), pi_learning_rate)
+        self._qv_optim = optim.Adam(self.qv.parameters(), qv_learning_rate)
 
         self._noise = exploration_strategy
         self._noise_scale_factor = noise_scale_factor
@@ -58,9 +58,10 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
 
     def _initialize_networks(self, phi: nn.Module):
         support_dim = self._support_dim if hasattr(self, '_support_dim') else 1
-        actor_net = Head.build(head_type='simple', body=phi['actor'],
-                               output_dim=self._action_dim)
-        critic_net = Head.build(head_type='simple', body=phi['critic'],
+        actor_net = Head.build(head_type='simple', phi=phi['actor'],
+                               output_dim=self._action_dim,
+                               output_activation='tanh')
+        critic_net = Head.build(head_type='simple', phi=phi['critic'],
                                 output_dim=support_dim)
         target_actor_net = deepcopy(actor_net)
         target_critic_net = deepcopy(critic_net)
@@ -119,7 +120,7 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
     def _update_critic(self, batch: Batch):
         loss = self._compute_critic_loss(batch)
         if self._l2_lambda > 0.0:
-            loss += utils.l2_loss(self.qv, self._l2_lambda)
+            loss += ops.l2_loss(self.qv, self._l2_lambda, self._device)
 
         self._qv_optim.zero_grad()
         loss.backward()
@@ -136,17 +137,13 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         with torch.no_grad():
             next_action = self.target_pi(next_state)
             self.target_qv.sample_noise()
-            target_next_q = self.target_qv(next_state, next_action)
-        target_q = utils.td_target(
-            reward=batch.reward,
-            mask=batch.mask,
-            target=target_next_q.view(-1, 1),
-            discount=batch.discount_factor * self._discount)
+            target_next_q = self.target_qv(next_state, next_action).view(-1, 1)
+            target_q = ops.td_target(batch.reward, batch.mask, target_next_q,
+                                     batch.discount_factor * self._discount)
 
         self.qv.sample_noise()
         expected_q = self.qv(state, batch.action)
-        loss = utils.mse_loss(expected_q, target_q)
-        return loss
+        return ops.mse_loss(expected_q, target_q)
 
     def _update_actor(self, batch: Batch):
         state = self._state_normalizer(batch.state, self._device)

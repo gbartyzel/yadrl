@@ -81,7 +81,7 @@ class SAC(OffPolicyAgent, agent_type='sac'):
         state = self._state_normalizer(batch.state)
         next_state = self._state_normalizer(batch.next_state)
 
-        next_action = self.pi.sample(next_state)
+        next_action = self.pi.sample()
         log_prob = self.pi.log_prob(next_action)
         self.target_qv.sample_noise()
         target_next_q = torch.min(*self.target_qv(next_state, next_action))
@@ -106,7 +106,7 @@ class SAC(OffPolicyAgent, agent_type='sac'):
     def _update_actor_and_temperature(self, batch: Batch):
         state = self._state_normalizer(batch.state)
 
-        action = self.pi.sample(state)
+        action = self.pi.sample()
         log_prob = self.pi.log_prob(action)
         self.qv.sample_noise()
         target_log_prob = torch.min(*self.qv(state, action))

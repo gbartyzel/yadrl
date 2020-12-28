@@ -49,7 +49,6 @@ class Head(nn.Module):
         self._phi = phi
         self._heads = nn.ModuleList([
             self._make_module(self._output_dim * self._support_dim)])
-        self.reset_noise()
 
     def _forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         return self._phi(*input_data)
@@ -84,7 +83,6 @@ class Head(nn.Module):
 
     @staticmethod
     def _get_init_fn(iteration: int, last_iteration: int) -> Callable:
-        print(iteration, last_iteration)
         if iteration + 1 == last_iteration - 1:
             return ops.uniform_init
         return None
@@ -133,6 +131,7 @@ class DistributionDuelingHead(DuelingHead, head_type='distribution_dueling'):
         value = value.view(-1, 1, self._support_dim)
         return advantage + value - advantage.mean(1, True)
 
+
 class MultiHead(Head, head_type='multi'):
     def __init__(self, num_heads: int = 2, **kwargs):
         super().__init__(**kwargs)
@@ -142,6 +141,10 @@ class MultiHead(Head, head_type='multi'):
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> Sequence[th.Tensor]:
         return tuple(head(*input_data) for head in self._heads)
+
+    def evaluate_head(self, *input_data: Sequence[th.Tensor],
+                      idx: int) -> th.Tensor:
+        return self._heads[idx](*input_data)
 
     def sample_noise(self):
         for head in self._heads:

@@ -1,8 +1,9 @@
 from typing import Tuple
 
 import torch
+import torch.nn.functional as F
 
-import yadrl.common.ops as utils
+import yadrl.common.ops as ops
 from yadrl.agents.dpg.ddpg import DDPG
 from yadrl.common.memory import Batch
 
@@ -22,28 +23,23 @@ class CategoricalDDPG(DDPG, agent_type='categorical_ddpg'):
                   state: torch.Tensor,
                   action: torch.Tensor,
                   sample_noise: bool = False) -> torch.Tensor:
-        probs = super()._sample_q(state, action, sample_noise).exp()
+        probs = F.softmax(super()._sample_q(state, action, sample_noise), -1)
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
-    def _compute_loss(self, batch: Batch) -> torch.Tensor:
+    def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
         next_state = self._state_normalizer(batch.next_state, self._device)
         state = self._state_normalizer(batch.state, self._device)
 
         with torch.no_grad():
             next_action = self.target_pi(next_state)
             self.target_qv.sample_noise()
-            next_probs = self.target_qv(next_state, next_action).exp()
-        target_atoms = utils.td_target(
-            reward=batch.reward,
-            mask=batch.mask,
-            target=self._atoms,
-            discount=batch.discount_factor * self._discount)
-        target_probs = utils.l2_projection(
-            next_probs=next_probs,
-            atoms=self._atoms,
-            target_atoms=target_atoms)
+            next_probs = F.softmax(self.target_qv(next_state, next_action), -1)
+            target_atoms = ops.td_target(batch.reward, batch.mask, self._atoms,
+                                         batch.discount_factor * self._discount)
+            target_probs = ops.l2_projection(next_probs, self._atoms,
+                                             target_atoms)
 
         self.qv.sample_noise()
-        log_probs = self.qv(state, batch.action)
+        log_probs = F.log_softmax(self.qv(state, batch.action), -1)
         loss = -(target_probs * log_probs).sum(-1)
         return loss.mean()

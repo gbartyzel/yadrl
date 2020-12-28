@@ -43,7 +43,11 @@ class Configuration:
         if 'exploration_strategy' in data:
             self.exploration_strategy = self.__parse_exploration_strategy(
                 data['exploration_strategy'])
-        self.body = Body(BodyParameters(data['body']))
+        if any([key == 'layers' for key in data['body'].keys()]):
+            self.body = Body(BodyParameters(data['body']))
+        else:
+            self.body = {k: Body(BodyParameters(data['body'][k]))
+                         for k in data['body'].keys()}
 
     @staticmethod
     def __load_config(config_path: str) -> Tuple[T_CONFIG, str]:
@@ -73,12 +77,13 @@ class Configuration:
         else:
             ValueError('Invalid epsilon schedule type!')
 
-    @staticmethod
-    def __create_noise_policy(data: T_CONFIG) -> noise.GaussianNoise:
+    def __create_noise_policy(self, data: T_CONFIG) -> noise.GaussianNoise:
         if data['type'] == 'gaussian':
-            return noise.GaussianNoise(**data['parameters'])
+            return noise.GaussianNoise(dim=self.env.action_space.shape[0],
+                                       **data['parameters'])
         elif data['type'] == 'ou':
-            return noise.OUNoise(**data['parameters'])
+            return noise.OUNoise(dim=self.env.action_space.shape[0],
+                                 **data['parameters'])
         else:
             ValueError()
 

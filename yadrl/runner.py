@@ -9,7 +9,7 @@ from yadrl.common.configuration import Configuration
 def flatten_dictionary(in_dict):
     items: dict = {}
     for k, v in in_dict.items():
-        if isinstance(v, collections.abc.MutableMapping):
+        if isinstance(v, collections.abc.MutableMapping) and k != 'body':
             items.update(flatten_dictionary(v).items())
         else:
             items.update({k: v})
@@ -41,7 +41,7 @@ class Runner:
     def _parse_arguments() -> argparse.Namespace:
         parser = argparse.ArgumentParser()
         parser.add_argument('--test', action='store_true')
-        parser.add_argument('--num_train_steps', type=int, default=100000)
+        parser.add_argument('--num_train_steps', type=int, default=1000000)
         parser.add_argument('--config_path', type=str, required=True)
         return parser.parse_args()
 
