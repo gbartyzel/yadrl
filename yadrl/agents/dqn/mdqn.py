@@ -28,34 +28,31 @@ class MDQN(DQN, agent_type='munchausen_dqn'):
         self._temperature = 1.0 / self._reward_scaling
 
     def _compute_loss(self, batch) -> torch.Tensor:
-        state = self._state_normalizer(batch.state, self._device)
-        next_state = self._state_normalizer(batch.next_state, self._device)
-
-        if self._temperature_tuning:
-            self._update_temperature(state)
-
         with torch.no_grad():
             self.target_model.sample_noise()
-            target_q_next = self.target_model(next_state)
+            target_q_next = self.target_model(batch.next_state)
             next_pi = F.softmax(target_q_next / self._temperature, -1)
             next_log_pi = ops.scaled_logsoftmax(target_q_next,
                                                 self._temperature)
-            m_log_pi = ops.scaled_logsoftmax(self.target_model(state),
+            m_log_pi = ops.scaled_logsoftmax(self.target_model(batch.state),
                                              self._temperature)
             m_log_pi = m_log_pi.gather(1, batch.action.long())
 
             m_reward = batch.reward + self._alpha * m_log_pi.clamp(
                 self._lower_clamp, 0.0)
-            target_q = ops.td_target(
-                reward=m_reward,
-                mask=batch.mask,
-                target=(next_pi * (target_q_next - next_log_pi)).sum(-1, True),
-                discount=batch.discount_factor * self._discount)
+            m_target = (next_pi * (target_q_next - next_log_pi)).sum(-1, True)
+            target_q = ops.td_target(m_reward, batch.mask, m_target,
+                                     batch.discount_factor * self._discount)
 
-        expected_q = self.model(state).gather(1, batch.action.long())
+        expected_q = self.model(batch.state).gather(1, batch.action.long())
         if self._use_huber_loss_fn:
-            return ops.huber_loss(expected_q, target_q)
-        return ops.mse_loss(expected_q, target_q)
+            loss = ops.huber_loss(expected_q, target_q)
+        else:
+            loss = ops.mse_loss(expected_q, target_q)
+        if self._temperature_tuning:
+            self._update_temperature(batch.state)
+
+        return loss
 
     def _update_temperature(self, state: torch.Tensor):
         q_value = self._sample_q(state, True)

@@ -27,19 +27,17 @@ class CategoricalDDPG(DDPG, agent_type='categorical_ddpg'):
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
-        next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.state, self._device)
-
         with torch.no_grad():
-            next_action = self.target_pi(next_state)
+            next_action = self.target_pi(batch.next_state)
             self.target_qv.sample_noise()
-            next_probs = F.softmax(self.target_qv(next_state, next_action), -1)
+            next_probs = F.softmax(self.target_qv(batch.next_state,
+                                                  next_action), -1)
             target_atoms = ops.td_target(batch.reward, batch.mask, self._atoms,
                                          batch.discount_factor * self._discount)
             target_probs = ops.l2_projection(next_probs, self._atoms,
                                              target_atoms)
 
         self.qv.sample_noise()
-        log_probs = F.log_softmax(self.qv(state, batch.action), -1)
+        log_probs = F.log_softmax(self.qv(batch.state, batch.action), -1)
         loss = -(target_probs * log_probs).sum(-1)
         return loss.mean()

@@ -25,29 +25,28 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
     def _compute_loss(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
-        next_state = self._state_normalizer(batch.next_state, self._device)
         batch_vec = torch.arange(self._batch_size).long()
 
         with torch.no_grad():
             self.target_model.sample_noise()
-            next_probs = F.softmax(self.target_model(next_state).exp(), -1)
+            next_probs = F.softmax(self.target_model(batch.next_state), -1)
             exp_atoms = self._atoms.expand_as(next_probs)
             if self._use_double_q:
                 self.model.sample_noise()
-                next_double_probs = F.softmax(self.model(next_state), -1)
+                next_double_probs = F.softmax(self.model(batch.next_state), -1)
                 next_q = next_double_probs.mul(exp_atoms).sum(-1)
             else:
                 next_q = next_probs.mul(exp_atoms).sum(-1)
             next_action = next_q.argmax(-1).long()
             next_probs = next_probs[batch_vec, next_action, :]
 
-        target_atoms = ops.td_target(batch.reward, batch.mask, self._atoms,
-                                     batch.discount_factor * self._discount)
-        target_probs = ops.l2_projection(next_probs, self._atoms, target_atoms)
+            target_atoms = ops.td_target(batch.reward, batch.mask, self._atoms,
+                                         batch.discount_factor * self._discount)
+            target_probs = ops.l2_projection(next_probs, self._atoms,
+                                             target_atoms)
 
         self.model.sample_noise()
-        log_probs = F.log_softmax(self.model(state), -1)
+        log_probs = F.log_softmax(self.model(batch.state), -1)
         log_probs = log_probs[batch_vec, batch.action.squeeze().long(), :]
         loss = torch.mean(-(target_probs * log_probs).sum(-1))
         return loss

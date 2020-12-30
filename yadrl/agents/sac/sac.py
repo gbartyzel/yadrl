@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import yadrl.common.ops as utils
+import yadrl.common.ops as ops
 from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.memory import Batch
 from yadrl.networks.head import Head
@@ -13,9 +13,9 @@ from yadrl.networks.head import Head
 
 class SAC(OffPolicyAgent, agent_type='sac'):
     def __init__(self,
-                 pi_lrate: float,
-                 qv_lrate: float,
-                 temperature_lrate: float,
+                 pi_learning_rate: float,
+                 qv_learning_rate: float,
+                 entropy_learning_rate: float,
                  pi_grad_norm_value: float = 0.0,
                  qv_grad_norm_value: float = 0.0,
                  temperature_tuning: bool = True, **kwargs):
@@ -23,16 +23,16 @@ class SAC(OffPolicyAgent, agent_type='sac'):
         self._pi_grad_norm_value = pi_grad_norm_value
         self._qv_grad_norm_value = qv_grad_norm_value
 
-        self._pi_optim = optim.Adam(self.pi.parameters(), pi_lrate)
-        self._qv_optim = optim.Adam(self.qv.parameters(), qv_lrate)
+        self._pi_optim = optim.Adam(self.pi.parameters(), pi_learning_rate)
+        self._qv_optim = optim.Adam(self.qv.parameters(), qv_learning_rate)
 
         self._temperature_tuning = temperature_tuning
         if temperature_tuning:
             self._target_entropy = -np.prod(self._action_dim)
             self._log_temperature = torch.zeros(
                 1, requires_grad=True, device=self._device)
-            self._temperature_optim = optim.Adam([self._log_temperature],
-                                                 lr=temperature_lrate)
+            self._entropy_optim = optim.Adam([self._log_temperature],
+                                             lr=entropy_learning_rate)
         self._temperature = 1.0 / self._reward_scaling
 
     @property
@@ -49,9 +49,10 @@ class SAC(OffPolicyAgent, agent_type='sac'):
 
     def _initialize_networks(self, phi):
         actor_net = Head.build(head_type='squashed_gaussian',
-                               body=phi['actor'],
+                               phi=phi['actor'],
                                output_dim=self._action_dim)
-        critic_net = Head.build(head_type='multi', body=phi['critic'])
+        critic_net = Head.build(head_type='multi', phi=phi['critic'],
+                                output_dim=1, num_heads=2)
         target_critic_net = deepcopy(critic_net)
         critic_net.to(self._device)
         target_critic_net.to(self._device)
@@ -78,23 +79,19 @@ class SAC(OffPolicyAgent, agent_type='sac'):
             self._update_target(self.qv, self.target_qv)
 
     def _update_critic(self, batch: Batch):
-        state = self._state_normalizer(batch.state)
-        next_state = self._state_normalizer(batch.next_state)
-
-        next_action = self.pi.sample()
-        log_prob = self.pi.log_prob(next_action)
-        self.target_qv.sample_noise()
-        target_next_q = torch.min(*self.target_qv(next_state, next_action))
-        target_next_v = target_next_q - self._temperature * log_prob
-        target_q = utils.td_target(
-            reward=batch.reward,
-            mask=batch.mask,
-            target=target_next_v,
-            discount=batch.discount_factor * self._discount).detach()
+        with torch.no_grad():
+            next_action = self.pi.sample()
+            log_prob = self.pi.log_prob(next_action)
+            self.target_qv.sample_noise()
+            target_next_q = torch.min(*self.target_qv(batch.next_state,
+                                                      next_action))
+            target_next_v = target_next_q - self._temperature * log_prob
+            target_q = ops.td_target(batch.reward, batch.mask, target_next_v,
+                                     batch.discount_factor * self._discount)
         self.qv.sample_noise()
-        expected_qs = self.qv(state, batch.action)
+        expected_qs = self.qv(batch.state, batch.action)
 
-        loss = sum(utils.mse_loss(q, target_q) for q in expected_qs)
+        loss = sum(ops.mse_loss(q, target_q) for q in expected_qs)
 
         self._qv_optim.zero_grad()
         loss.backward()
@@ -104,20 +101,18 @@ class SAC(OffPolicyAgent, agent_type='sac'):
         self._qv_optim.step()
 
     def _update_actor_and_temperature(self, batch: Batch):
-        state = self._state_normalizer(batch.state)
-
         action = self.pi.sample()
         log_prob = self.pi.log_prob(action)
         self.qv.sample_noise()
-        target_log_prob = torch.min(*self.qv(state, action))
+        target_log_prob = torch.min(*self.qv(batch.state, action))
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         if self._temperature_tuning:
-            temperature_loss = torch.mean(
+            entropy_loss = torch.mean(
                 -self._log_temperature
                 * (log_prob + self._target_entropy).detach())
         else:
-            temperature_loss = 0.0
+            entropy_loss = 0.0
 
         self._pi_optim.zero_grad()
         policy_loss.backward()
@@ -127,9 +122,9 @@ class SAC(OffPolicyAgent, agent_type='sac'):
         self._pi_optim.step()
 
         if self._temperature_tuning:
-            self._temperature_optim.zero_grad()
-            temperature_loss.backward()
-            self._temperature_optim.step()
+            self._entropy_optim.zero_grad()
+            entropy_loss.backward()
+            self._entropy_optim.step()
             self._temperature = self._log_temperature.exp().detach()
 
     @property

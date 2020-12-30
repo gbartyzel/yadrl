@@ -89,7 +89,7 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         return self.model(state)
 
     def _update(self):
-        batch = self._memory.sample(self._batch_size)
+        batch = self._memory.sample(self._batch_size, self._state_normalizer)
         loss = self._compute_loss(batch)
 
         self._writer.add_scalar('loss/q_value', loss, self._env_step)
@@ -102,27 +102,21 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         self._update_target(self.model, self.target_model)
 
     def _compute_loss(self, batch):
-        state = self._state_normalizer(batch.state, self._device)
-        next_state = self._state_normalizer(batch.next_state, self._device)
-
         with torch.no_grad():
             self.target_model.sample_noise()
-            target_next_q = self.target_model(next_state)
+            target_next_q = self.target_model(batch.next_state)
             if self._use_double_q:
                 self.model.sample_noise()
-                next_action = self.model(next_state).argmax(1, True)
+                next_action = self.model(batch.next_state).argmax(1, True)
                 target_next_q = target_next_q.gather(1, next_action)
             else:
                 target_next_q = target_next_q.max(1)[0].view(-1, 1)
 
-            target_q = ops.td_target(
-                reward=batch.reward,
-                mask=batch.mask,
-                target=target_next_q,
-                discount=batch.discount_factor * self._discount)
+            target_q = ops.td_target(batch.reward, batch.mask, target_next_q,
+                                     batch.discount_factor * self._discount)
 
         self.model.sample_noise()
-        expected_q = self.model(state).gather(1, batch.action.long())
+        expected_q = self.model(batch.state).gather(1, batch.action.long())
         if self._use_huber_loss_fn:
             return ops.huber_loss(expected_q, target_q)
         return ops.mse_loss(expected_q, target_q)

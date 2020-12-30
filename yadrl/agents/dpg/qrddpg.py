@@ -23,19 +23,16 @@ class QuantileDDPG(DDPG, agent_type='quantile_regression_ddpg'):
         return super()._sample_q(state, action, sample_noise).mean(-1)
 
     def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
-        next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.state, self._device)
-
         with torch.no_grad():
-            next_action = self.target_pi(next_state)
+            next_action = self.target_pi(batch.next_state)
             self.target_qv.sample_noise()
-            next_quantiles = self.target_qv(next_state, next_action)
+            next_quantiles = self.target_qv(batch.next_state, next_action)
             target_quantiles = ops.td_target(
                 batch.reward, batch.mask, next_quantiles,
                 batch.discount_factor * self._discount)
 
         self.qv.sample_noise()
-        expected_quantiles = self.qv(state, batch.action)
+        expected_quantiles = self.qv(batch.state, batch.action)
         loss = ops.quantile_hubber_loss(expected_quantiles, target_quantiles,
                                         self._cumulative_density)
         return loss

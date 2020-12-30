@@ -42,21 +42,18 @@ class TD3(DDPG, agent_type='td3'):
         return self.qv.evaluate_head(state, action, idx=0)
 
     def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
-        state = self._state_normalizer(batch.state, self._device)
-        next_state = self._state_normalizer(batch.next_state, self._device)
-
         with torch.no_grad():
             noise = self._target_noise().clamp(
                 *self._target_noise_limit).to(self._device)
-            next_action = self.target_pi(next_state) + noise
+            next_action = self.target_pi(batch.next_state) + noise
             next_action = next_action.clamp(*self._action_limit)
 
             self.target_qv.sample_noise()
-            target_next_qs = self.target_qv(next_state, next_action)
+            target_next_qs = self.target_qv(batch.next_state, next_action)
             target_next_q = torch.min(*target_next_qs).view(-1, 1)
             target_q = ops.td_target(batch.reward, batch.mask, target_next_q,
                                      batch.discount_factor * self._discount)
 
         self.qv.sample_noise()
-        expected_qs = self.qv(state, batch.action)
+        expected_qs = self.qv(batch.state, batch.action)
         return sum([ops.mse_loss(q, target_q) for q in expected_qs])

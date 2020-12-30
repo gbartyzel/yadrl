@@ -131,18 +131,15 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         self._writer.add_scalar('train/loss/qv', loss.item(), self._env_step)
 
     def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
-        next_state = self._state_normalizer(batch.next_state, self._device)
-        state = self._state_normalizer(batch.state, self._device)
-
         with torch.no_grad():
-            next_action = self.target_pi(next_state)
+            next_action = self.target_pi(batch.next_state)
             self.target_qv.sample_noise()
-            target_next_q = self.target_qv(next_state, next_action).view(-1, 1)
+            target_next_q = self.target_qv(batch.next_state, next_action)
             target_q = ops.td_target(batch.reward, batch.mask, target_next_q,
                                      batch.discount_factor * self._discount)
 
         self.qv.sample_noise()
-        expected_q = self.qv(state, batch.action)
+        expected_q = self.qv(batch.state, batch.action)
         return ops.mse_loss(expected_q, target_q)
 
     def _update_actor(self, batch: Batch):

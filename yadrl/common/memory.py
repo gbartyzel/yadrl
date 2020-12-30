@@ -5,6 +5,7 @@ import gym
 import numpy as np
 import torch
 
+from yadrl.common.normalizer import DummyNormalizer
 from yadrl.common.ops import to_tensor
 
 Batch = namedtuple('Batch', ['state', 'action', 'reward', 'next_state', 'mask',
@@ -111,22 +112,30 @@ class ReplayMemory(BaseMemory):
                      discount_factor)
         self._transition_idx = (self._transition_idx + 1) % self._capacity
 
-    def sample(self, batch_size: int) -> Batch:
+    def sample(self,
+               batch_size: int,
+               state_normalizer: DummyNormalizer = None) -> Batch:
+        if state_normalizer is None:
+            state_normalizer = DummyNormalizer()
         if self._combined:
             batch_size -= 1
         idxs = np.random.randint((self._size - 1), size=batch_size)
         if self._combined:
             idxs = np.append(idxs, np.array(self._transition_idx))
 
-        return Batch(
-            state=to_tensor(self._observation_buffer[idxs, ...], self._device),
-            action=to_tensor(self._action_buffer[idxs, ...], self._device),
-            reward=to_tensor(self._reward_buffer[idxs, ...], self._device),
-            next_state=to_tensor(self._next_observation_buffer[idxs, ...],
-                                 self._device),
-            mask=to_tensor(self._terminal_buffer[idxs, ...], self._device),
-            discount_factor=to_tensor(self._discount_buffer[idxs, ...],
-                                      self._device))
+        state_b = state_normalizer(
+            to_tensor(self._observation_buffer[idxs, ...], self._device),
+            self._device)
+        action_b = to_tensor(self._action_buffer[idxs, ...], self._device)
+        reward_b = to_tensor(self._reward_buffer[idxs, ...], self._device)
+        next_state_b = state_normalizer(
+            to_tensor(self._next_observation_buffer[idxs, ...], self._device),
+            self._device)
+        mask_b = to_tensor(self._terminal_buffer[idxs, ...], self._device)
+        discount_b = to_tensor(self._discount_buffer[idxs, ...], self._device)
+        return Batch(state=state_b, action=action_b, reward=reward_b,
+                     next_state=next_state_b, mask=mask_b,
+                     discount_factor=discount_b)
 
 
 class Rollout(BaseMemory):
