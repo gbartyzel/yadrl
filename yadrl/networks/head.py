@@ -166,6 +166,9 @@ class DistributionHead(Head):
         self._reparameterize: bool = reparameterize
         self._dist: td.Distribution = None
 
+    def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
+        return self._heads[0](self._forward(*input_data))
+
     def sample(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         pass
 
@@ -193,7 +196,7 @@ class GaussianHead(DistributionHead, head_type='gaussian'):
         self._output_dim = output_dim
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> Sequence[th.Tensor]:
-        out = self._forward(*input_data)
+        out = super().forward(*input_data)
         mean, log_std = out.split(self._output_dim, -1)
         return mean, log_std
 
@@ -211,7 +214,7 @@ class GaussianHead(DistributionHead, head_type='gaussian'):
     def log_prob(self, action: th.Tensor) -> th.Tensor:
         log_prob = self._dist.log_prob(action)
         log_prob = th.clamp(log_prob, -100.0, 100.0)
-        if len(log_prob.shape) == 2:
+        if len(log_prob.shape) > 1:
             return th.sum(log_prob, -1, True)
         return log_prob.view(-1, 1)
 
@@ -239,5 +242,5 @@ class SquashedGaussianHead(GaussianHead, head_type='squashed_gaussian'):
         eps = th.finfo(action.dtype).eps
         gaussian_action = th.atanh(action.clamp(-1.0 + eps, 1.0 - eps))
         log_prob = super().log_prob(gaussian_action)
-        log_prob -= th.log(1.0 - th.tanh(action).pow(2) + eps).sum(-1, True)
+        log_prob -= th.log(1.0 - action.pow(2) + eps).sum(-1, True)
         return log_prob

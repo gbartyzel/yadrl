@@ -21,7 +21,7 @@ class Configuration:
     agent_type: str = field(init=False)
     common: T_CONFIG = field(init=False)
     specific: T_CONFIG = field(init=False)
-    state_normalizer: Any = field(init=False)
+    state_normalizer: Any = field(init=False, default=None)
     exploration_strategy: Any = field(init=False, default=None)
     memory: Any = field(init=False, default=None)
     body: Body = field(init=False)
@@ -32,8 +32,9 @@ class Configuration:
         self.agent_type = data['agent_type']
         self.common = data['common']
         self.specific = data['specific']
-        self.state_normalizer = self.__parse_state_normalizer(
-            data['state_normalizer'])
+        if 'state_normalizer' in data:
+            self.state_normalizer = self.__parse_state_normalizer(
+                data['state_normalizer'])
         self.env = gym.make(data['env_id'])
         if 'memory' in data:
             self.memory = ReplayMemory(

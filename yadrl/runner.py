@@ -33,8 +33,8 @@ class Runner:
 
     def _create_agent(self) -> Agent:
         dict_config: dict = asdict(self._config)
-        for k, v in dict_config.items():
-            if v is None: dict_config.pop(k)
+        for i in dict_config.copy():
+            if dict_config[i] is None: dict_config.pop(i)
         return Agent.build(**flatten_dictionary(dict_config))
 
     @staticmethod

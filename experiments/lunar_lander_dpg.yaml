@@ -1,37 +1,26 @@
 cartpole_dqn:
-  agent_type: 'td3'
+  agent_type: 'sac'
   env_id: 'InvertedPendulum-v2'
   common:
     discount_factor: 0.99
-    n_step: 1
-    batch_size: 100
+    n_step: 5
+    batch_size: 256
     reward_scaling: 1.0
     warm_up_steps: 10000
     polyak_factor: 0.005
     target_update_frequency: 0
-    policy_update_frequency: 2
     update_frequency: 1
     update_steps: 1
     seed: 1337
     log_path: 'output'
   specific:
-    pi_learning_rate: 0.001
-    qv_learning_rate: 0.001
-    action_limit: [ -1.0, 1.0 ]
-    l2_lambda: 0.0
-    noise_scale_factor: 1.0
+    pi_learning_rate: 0.0003
+    qv_learning_rate: 0.0003
+    entropy_learning_rate: 0.0003
   state_normalizer:
     type: 'rms'
     parameters:
       dim: [ 4 ]
-  exploration_strategy:
-    action_type: 'continuous'
-    type: 'gaussian'
-    parameters:
-      mean: 0.0
-      sigma: 0.1
-      sigma_min: 0.0
-      n_step_annealing: 0
   memory:
     capacity: 1000000
     combined: False
@@ -41,10 +30,10 @@ cartpole_dqn:
       input:
         primary: 4
       layers:
-        - out_dim: 400
+        - out_dim: 256
           activation: 'relu'
           layer_type: 'linear'
-        - out_dim: 300
+        - out_dim: 256
           activation: 'relu'
           layer_type: 'linear'
     critic:
@@ -53,9 +42,9 @@ cartpole_dqn:
         secondary: 1
       action_layer: 0
       layers:
-        - out_dim: 400
+        - out_dim: 256
           activation: 'relu'
           layer_type: 'linear'
-        - out_dim: 300
+        - out_dim: 256
           activation: 'relu'
           layer_type: 'linear'

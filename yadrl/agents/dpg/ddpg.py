@@ -109,7 +109,7 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         return self.qv(state, action)
 
     def _update(self):
-        batch = self._memory.sample(self._batch_size)
+        batch = self._memory.sample(self._batch_size, self._state_normalizer)
         self._update_critic(batch)
         if self._env_step % (self._policy_update_frequency *
                              self._update_frequency) == 0:
