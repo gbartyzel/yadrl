@@ -10,7 +10,7 @@ from yadrl.networks.layer import Layer
 
 
 class Head(nn.Module):
-    registered_heads: Dict[str, 'Head'] = {}
+    registered_heads: Dict[str, _VT] = {}
 
     noise_map: Dict[str, str] = {
         'none': 'linear',
@@ -36,7 +36,7 @@ class Head(nn.Module):
                  output_activation: str = 'none',
                  hidden_dim: Sequence[int] = None):
         super().__init__()
-        self._hidden_dim: Sequence[int] = hidden_dim
+        self._hidden_dim = hidden_dim
         if hidden_dim is None:
             self._hidden_dim = ()
         self._output_dim = output_dim
@@ -65,7 +65,7 @@ class Head(nn.Module):
             for layer in head:
                 layer.reset_noise()
 
-    def _make_module(self, output_dim: int) -> nn.Module:
+    def _make_module(self, output_dim: int) -> nn.Sequential:
         dims = (self._phi.output_dim,) + self._hidden_dim + (output_dim,)
         layers = []
         for i in range(len(dims) - 1):
@@ -93,22 +93,16 @@ class SimpleHead(Head, head_type='simple'):
         super().__init__(**kwargs)
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
-        out = self._forward(*input_data)
-        return self._heads[0](out)
+        return self._heads[0](self._forward(*input_data))
 
 
-class QuantileHead(SimpleHead, head_type='quantile'):
+class DistributionValueHead(SimpleHead, head_type='distribution_value'):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         out = super().forward(*input_data)
         return out.view(-1, self._output_dim, self._support_dim)
-
-
-class CategoricalHead(QuantileHead, head_type='categorical'):
-    def __init__(self, **kwargs):
-        super().__init__(output_activation='log_softmax', **kwargs)
 
 
 class DuelingHead(Head, head_type='dueling'):
@@ -123,7 +117,8 @@ class DuelingHead(Head, head_type='dueling'):
         return advantage
 
 
-class DistributionDuelingHead(DuelingHead, head_type='distribution_dueling'):
+class DistributionDuelingValueHead(DuelingHead,
+                                   head_type='distribution_dueling_value'):
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         out = self._forward(*input_data)
         advantage, value = [head(out) for head in self._heads]
@@ -163,8 +158,8 @@ class DistributionHead(Head):
                  output_activation: str = 'none'):
         super().__init__(phi=phi, output_dim=output_dim,
                          output_activation=output_activation)
-        self._reparameterize: bool = reparameterize
-        self._dist: td.Distribution = None
+        self._reparameterize = reparameterize
+        self._dist = None
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         return self._heads[0](self._forward(*input_data))
@@ -224,23 +219,21 @@ class SquashedGaussianHead(GaussianHead, head_type='squashed_gaussian'):
                  log_std_limit: Tuple[float, float] = (-20.0, 2.0),
                  **kwargs):
         super().__init__(**kwargs)
-        self._log_std_limit = log_std_limit
+        self._log_std_limit: Tuple[float, float] = log_std_limit
 
     def forward(self, *input_data: th.Tensor) -> Sequence[th.Tensor]:
         mean, log_std = super().forward(*input_data)
         return mean, log_std.clamp(*self._log_std_limit)
 
     def sample(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
-        action = super().sample(*input_data)
-        return th.tanh(action)
+        return th.tanh(super().sample(*input_data))
 
     def deterministic(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
-        action = super().deterministic(*input_data)
-        return th.tanh(action)
+        return th.tanh(super().deterministic(*input_data))
 
     def log_prob(self, action: th.Tensor) -> th.Tensor:
         eps = th.finfo(action.dtype).eps
         gaussian_action = th.atanh(action.clamp(-1.0 + eps, 1.0 - eps))
-        log_prob = super().log_prob(gaussian_action)
+        log_prob: th.Tensor = super().log_prob(gaussian_action)
         log_prob -= th.log(1.0 - action.pow(2) + eps).sum(-1, True)
         return log_prob

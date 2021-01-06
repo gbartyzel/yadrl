@@ -1,4 +1,5 @@
 from copy import deepcopy
+from itertools import chain
 
 import numpy as np
 import torch
@@ -6,6 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.ops as ops
+import yadrl.common.types as t
 from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.memory import Batch
 from yadrl.networks.head import Head
@@ -40,18 +42,18 @@ class SAC(OffPolicyAgent, agent_type='sac'):
         self._temperature = 1.0 / self._reward_scaling
 
     @property
-    def pi(self):
+    def pi(self) -> nn.Module:
         return self._networks['actor']
 
     @property
-    def qv(self):
+    def qv(self) -> nn.Module:
         return self._networks['critic']
 
     @property
-    def target_qv(self):
+    def target_qv(self) -> nn.Module:
         return self._networks['target_critic']
 
-    def _initialize_networks(self, phi):
+    def _initialize_networks(self, phi: t.TModuleDict) -> t.TModuleDict:
         actor_net = Head.build(head_type='squashed_gaussian',
                                phi=phi['actor'],
                                output_dim=self._action_dim)
@@ -68,10 +70,9 @@ class SAC(OffPolicyAgent, agent_type='sac'):
                 'target_critic': target_critic_net}
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
-        state = super()._act(state)
         self.pi.eval()
         with torch.no_grad():
-            action = self.pi.get_action(state, not train)
+            action = self.pi.get_action(super()._act(state), not train)
         self.pi.train()
         return action[0].cpu().numpy()
 
@@ -130,10 +131,9 @@ class SAC(OffPolicyAgent, agent_type='sac'):
             self._temperature = self._log_temperature.exp().detach()
 
     @property
-    def parameters(self):
-        return list(self.qv.named_parameters()) + \
-               list(self.pi.named_parameters())
+    def parameters(self) -> t.TNamedParameters:
+        return chain(self.qv.named_parameters(), self.pi.named_parameters())
 
     @property
-    def target_parameters(self):
+    def target_parameters(self) -> t.TNamedParameters:
         return self.target_qv.named_parameters()

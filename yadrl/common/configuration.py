@@ -1,5 +1,5 @@
 from dataclasses import InitVar, dataclass, field
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Tuple, Union
 
 import gym
 import yaml
@@ -7,11 +7,10 @@ import yaml
 import yadrl.common.exploration_noise as noise
 import yadrl.common.normalizer as norm
 import yadrl.common.scheduler as sch
+import yadrl.common.types as t
 from yadrl.common.memory import ReplayMemory
 from yadrl.networks.body import Body
 from yadrl.networks.body_parameter import BodyParameters
-
-T_CONFIG = Dict[str, Any]
 
 
 @dataclass
@@ -19,12 +18,12 @@ class Configuration:
     env: gym.Env = field(init=False)
     experiment_name: str = field(init=False)
     agent_type: str = field(init=False)
-    common: T_CONFIG = field(init=False)
-    specific: T_CONFIG = field(init=False)
+    common: t.TConfig = field(init=False)
+    specific: t.TConfig = field(init=False)
     state_normalizer: Any = field(init=False, default=None)
     exploration_strategy: Any = field(init=False, default=None)
     memory: Any = field(init=False, default=None)
-    body: Body = field(init=False)
+    body: Union[Body, t.TModuleDict] = field(init=False)
     config_path: InitVar[str]
 
     def __post_init__(self, config_path: str):
@@ -51,14 +50,14 @@ class Configuration:
                          for k in data['body'].keys()}
 
     @staticmethod
-    def __load_config(config_path: str) -> Tuple[T_CONFIG, str]:
+    def __load_config(config_path: str) -> Tuple[t.TConfig, str]:
         with open(config_path, 'r') as config_file:
             data = yaml.safe_load(config_file)
         keys = list(data.keys())
         assert len(keys) == 1
         return data[keys[0]], keys[0]
 
-    def __parse_exploration_strategy(self, data: T_CONFIG) -> Union[
+    def __parse_exploration_strategy(self, data: t.TConfig) -> Union[
         sch.BaseScheduler, noise.GaussianNoise]:
         action_type = data['action_type']
         if action_type == 'discrete':
@@ -70,7 +69,7 @@ class Configuration:
                 'Invalid action type! Should be discrete or continuous')
 
     @staticmethod
-    def __create_scheduler_policy(data: T_CONFIG) -> sch.BaseScheduler:
+    def __create_scheduler_policy(data: t.TConfig) -> sch.BaseScheduler:
         if data['type'] == 'linear':
             return sch.LinearScheduler(**data['parameters'])
         elif data['type'] == 'exponential':
@@ -78,7 +77,7 @@ class Configuration:
         else:
             ValueError('Invalid epsilon schedule type!')
 
-    def __create_noise_policy(self, data: T_CONFIG) -> noise.GaussianNoise:
+    def __create_noise_policy(self, data: t.TConfig) -> noise.GaussianNoise:
         if data['type'] == 'gaussian':
             return noise.GaussianNoise(dim=self.env.action_space.shape[0],
                                        **data['parameters'])
@@ -89,7 +88,7 @@ class Configuration:
             ValueError()
 
     @staticmethod
-    def __parse_state_normalizer(data: T_CONFIG) -> norm.DummyNormalizer:
+    def __parse_state_normalizer(data: t.TConfig) -> norm.DummyNormalizer:
         norm_type = data['type']
         if norm_type == 'rms':
             return norm.RMSNormalizer(**data['parameters'])

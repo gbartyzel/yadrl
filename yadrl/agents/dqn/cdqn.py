@@ -1,14 +1,15 @@
 from typing import Tuple
 
-import torch
+import torch as th
 import torch.nn.functional as F
 
 import yadrl.common.ops as ops
 from yadrl.agents.dqn.dqn import DQN
+from yadrl.common.memory import Batch
 
 
 class CategoricalDQN(DQN, agent_type='categorical_dqn'):
-    head_types = ['categorical', 'distribution_dueling']
+    head_types = ['distribution_value', 'distribution_dueling_value']
 
     def __init__(self,
                  v_limit: Tuple[float, float] = (-100.0, 100.0),
@@ -16,18 +17,17 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
         self._support_dim = support_dim
         super().__init__(**kwargs)
         self._v_limit = v_limit
-        self._atoms = torch.linspace(v_limit[0], v_limit[1], support_dim,
-                                     device=self._device).unsqueeze(0)
+        self._atoms = th.linspace(v_limit[0], v_limit[1], support_dim,
+                                  device=self._device).unsqueeze(0)
 
-    def _sample_q(self, state: torch.Tensor,
-                  train: bool = False) -> torch.Tensor:
+    def _sample_q(self, state: th.Tensor, train: bool = False) -> th.Tensor:
         probs = F.softmax(super()._sample_q(state, train), -1)
         return probs.mul(self._atoms.expand_as(probs)).sum(-1)
 
-    def _compute_loss(self, batch):
-        batch_vec = torch.arange(self._batch_size).long()
+    def _compute_loss(self, batch: Batch) -> th.Tensor:
+        batch_vec = th.arange(self._batch_size).long()
 
-        with torch.no_grad():
+        with th.no_grad():
             self.target_model.sample_noise()
             next_probs = F.softmax(self.target_model(batch.next_state), -1)
             exp_atoms = self._atoms.expand_as(next_probs)
@@ -48,5 +48,5 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
         self.model.sample_noise()
         log_probs = F.log_softmax(self.model(batch.state), -1)
         log_probs = log_probs[batch_vec, batch.action.squeeze().long(), :]
-        loss = torch.mean(-(target_probs * log_probs).sum(-1))
+        loss = th.mean(-(target_probs * log_probs).sum(-1))
         return loss

@@ -36,8 +36,8 @@ class ExponentialScheduler(BaseScheduler):
                  start_value: float,
                  end_value: float,
                  annealing_steps: float):
-        super(ExponentialScheduler, self).__init__(
-            start_value, end_value, annealing_steps)
+        super(ExponentialScheduler, self).__init__(start_value, end_value,
+                                                   annealing_steps)
         self._decay_value = ((self._start_value - self._end_value)
                              * (self._start_value / self._end_value)
                              / self._annealing_steps)

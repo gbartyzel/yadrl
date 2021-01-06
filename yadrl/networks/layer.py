@@ -1,5 +1,5 @@
 import abc
-from typing import Callable, Dict, List
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
@@ -31,7 +31,7 @@ activation_fn: Dict[str, nn.Module] = {
 
 
 class Layer(nn.Module, abc.ABC):
-    registered_layer: Dict[str, 'Layer'] = {}
+    registered_layer: Dict[str, _VT] = {}
 
     def __init_subclass__(cls, layer_type: str, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -53,13 +53,14 @@ class Layer(nn.Module, abc.ABC):
                  layer_init: Callable = None,
                  **kwargs):
         super().__init__()
-        self.in_dim: int = in_dim
-        self.out_dim: int = out_dim
-        self.layer_type: str = layer_type
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.layer_type = layer_type
 
-        self._module: nn.Module = self._make_module(activation, normalization,
-                                                    dropout_prob, num_group,
-                                                    **kwargs)
+        self._module = self._make_module(activation,
+                                         normalization,
+                                         dropout_prob, num_group,
+                                         **kwargs)
         if layer_init is not None:
             layer_init(self._module[0])
 
@@ -79,7 +80,7 @@ class Layer(nn.Module, abc.ABC):
                      normalization: str,
                      dropout_prob: float,
                      num_group: int,
-                     **kwargs) -> nn.Module:
+                     **kwargs) -> nn.Sequential:
         block = [
             self._get_layer(**kwargs),
             self._get_normalization(normalization, num_group),
@@ -90,7 +91,7 @@ class Layer(nn.Module, abc.ABC):
 
     def _get_normalization(self, norm_type: str, num_group: int) -> nn.Module:
         if norm_type != 'none':
-            norm_params: List[int] = [self.out_dim]
+            norm_params = [self.out_dim]
             if norm_type == 'group':
                 norm_params = [num_group] + norm_params
             return normalizations[norm_type](*norm_params)

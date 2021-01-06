@@ -1,16 +1,16 @@
 from collections import namedtuple
-from typing import Tuple, Union
+from typing import Sequence, Tuple, Union
 
 import gym
 import numpy as np
-import torch
+import torch as th
 
+import yadrl.common.types as t
 from yadrl.common.normalizer import DummyNormalizer
 from yadrl.common.ops import to_tensor
 
 Batch = namedtuple('Batch', ['state', 'action', 'reward', 'next_state', 'mask',
                              'discount_factor'])
-TTransition = Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool, float]
 
 
 class BaseMemory:
@@ -36,13 +36,9 @@ class BaseMemory:
         self._terminal_buffer = np.zeros((capacity, 1), np.bool)
         self._discount_buffer = np.zeros((capacity, 1), np.float32)
 
-    def push(self,
-             state: np.ndarray,
-             action: Union[np.ndarray, int, float],
-             reward: Union[np.ndarray, float],
-             next_state: np.ndarray,
-             terminal: Union[np.ndarray, float, bool],
-             discount_factor: Union[float]):
+    def push(self, state: np.ndarray, action: t.TActionOption,
+             reward: float, next_state: np.ndarray, terminal: bool,
+             discount_factor: float):
         self._observation_buffer[self._transition_idx] = state
         self._action_buffer[self._transition_idx] = action
         self._reward_buffer[self._transition_idx] = reward
@@ -82,7 +78,7 @@ class BaseMemory:
         self._size = 0
         self._transition_idx = 0
 
-    def __getitem__(self, item: int) -> Tuple[np.ndarray, ...]:
+    def __getitem__(self, item: int) -> t.TTransition:
         state = self._observation_buffer[item]
         action = self._action_buffer[item]
         reward = self._reward_buffer[item]
@@ -99,15 +95,11 @@ class ReplayMemory(BaseMemory):
                  **kwargs):
         super().__init__(**kwargs)
         self._combined = combined
-        self._device = torch.device(device)
+        self._device = th.device(device)
 
-    def push(self,
-             state: np.ndarray,
-             action: Union[np.ndarray, int, float],
-             reward: Union[np.ndarray, float],
-             next_state: np.ndarray,
-             terminal: Union[np.ndarray, float, bool],
-             discount_factor: Union[float]):
+    def push(self, state: np.ndarray, action: t.TActionOption,
+             reward: float, next_state: np.ndarray, terminal: bool,
+             discount_factor: float):
         super().push(state, action, reward, next_state, terminal,
                      discount_factor)
         self._transition_idx = (self._transition_idx + 1) % self._capacity
@@ -143,20 +135,16 @@ class Rollout(BaseMemory):
     def ready(self) -> int:
         return self._size == self._capacity
 
-    def push(self,
-             state: np.ndarray,
-             action: Union[np.ndarray, int, float],
-             reward: Union[np.ndarray, float],
-             next_state: np.ndarray,
-             terminal: Union[np.ndarray, float, bool],
-             discount_factor: Union[float]):
+    def push(self, state: np.ndarray, action: Union[np.ndarray, int],
+             reward: float, next_state: np.ndarray, terminal: bool,
+             discount_factor: float):
         if self._size == self._capacity:
             self.popleft()
         super().push(state, action, reward, next_state, terminal,
                      discount_factor)
         self._transition_idx = min(self._transition_idx + 1, self._capacity - 1)
 
-    def sample(self):
+    def sample(self) -> Sequence[t.TTransition]:
         if self.ready:
             if self._terminal_buffer[-1]:
                 transitions = list()
@@ -167,7 +155,7 @@ class Rollout(BaseMemory):
             return self._get_transition(),
         return None
 
-    def _get_transition(self) -> TTransition:
+    def _get_transition(self) -> t.TTransition:
         reward, discount_factor = self._compute_cumulative_reward()
         state: np.ndarray = self._observation_buffer[0]
         action: np.ndarray = self._action_buffer[0]
@@ -182,22 +170,3 @@ class Rollout(BaseMemory):
             discount = self._discount_buffer[t] ** t
             cum_reward += discount * self._reward_buffer[t]
         return cum_reward, discount
-
-
-if __name__ == '__main__':
-    import gym
-
-    env = gym.make('CartPole-v0')
-    rollout = Rollout(1, action_space=env.action_space,
-                      observation_space=env.observation_space)
-
-    state = env.reset()
-    for i in range(200):
-        action = env.action_space.sample()
-        next_state, reward, done, _ = env.step(action)
-        rollout.push(state, action, reward, next_state, done, 0.99)
-        state = next_state
-        print(rollout.sample())
-        if done:
-            break
-    env.close()

@@ -1,8 +1,10 @@
 from typing import Dict, Tuple, Union
 
 import numpy as np
-import torch
+import torch as th
 
+import yadrl.common.types as t
+from yadrl.common.ops import to_numpy, to_tensor
 from yadrl.common.running_mean_std import RunningMeanStd
 
 
@@ -11,8 +13,8 @@ class DummyNormalizer:
         pass
 
     def __call__(self,
-                 batch_input,
-                 device: torch.device = torch.device('cpu')):
+                 batch_input: t.TData,
+                 device: th.device = th.device('cpu')) -> t.TData:
         return batch_input
 
     def update(self, batch_input):
@@ -37,20 +39,20 @@ class RMSNormalizer(DummyNormalizer):
         self._clip = (clip_min, clip_max)
 
     def __call__(self,
-                 batch_input: Union[np.ndarray, torch.Tensor],
-                 device: torch.device = torch.device('cpu')):
+                 batch_input: t.TData,
+                 device: th.device = th.device('cpu')) -> t.TData:
         mean, std = self._rms()
-        if isinstance(batch_input, torch.Tensor):
-            mean = torch.from_numpy(mean.copy()).float().to(device)
-            std = torch.from_numpy(std.copy()).float().to(device)
-            return torch.clamp((batch_input - mean) / std, *self._clip)
+        if isinstance(batch_input, th.Tensor):
+            th_mean = to_tensor(mean, device)
+            th_std = to_tensor(std, device)
+            return th.clamp((batch_input - th_mean) / th_std, *self._clip)
         return np.clip(batch_input - mean / std, *self._clip)
 
-    def update(self, batch_input: Union[np.ndarray, torch.Tensor]):
-        if isinstance(batch_input, torch.Tensor):
-            self._rms.update(batch_input.clone().detach().cpu().numpy())
-            return
-        self._rms.update(batch_input)
+    def update(self, batch_input: t.TData):
+        if isinstance(batch_input, th.Tensor):
+            self._rms.update(to_numpy(batch_input))
+        else:
+            self._rms.update(batch_input)
 
     def load(self, state_dict: Dict[str, Union[np.ndarray, int]]):
         mean = state_dict['mean']
@@ -81,18 +83,17 @@ class ScaleNormalizer(DummyNormalizer):
         self._s_max = source_max
 
     def __call__(self,
-                 batch_input: Union[np.ndarray, torch.Tensor],
-                 device: torch.device = torch.device('cpu')) -> Union[
-        np.ndarray, torch.Tensor]:
+                 batch_input: Union[np.ndarray, th.Tensor],
+                 device: th.device = th.device('cpu')) -> t.TData:
         t_min = self._t_min
         t_max = self._t_max
         s_min = self._s_min
         s_max = self._s_max
-        if isinstance(batch_input, torch.Tensor):
-            t_min = torch.from_numpy(t_min).float().to(device)
-            t_max = torch.from_numpy(t_max).float().to(device)
-            s_min = torch.from_numpy(s_min).float().to(device)
-            s_max = torch.from_numpy(s_max).float().to(device)
+        if isinstance(batch_input, th.Tensor):
+            t_min = to_tensor(t_min, device)
+            t_max = to_tensor(t_max, device)
+            s_min = to_tensor(s_min, device)
+            s_max = to_tensor(s_max, device)
         return (batch_input - s_min) / (s_max - s_min) * (t_max - t_min) + t_min
 
 
@@ -102,7 +103,6 @@ class ImageNormalizer(DummyNormalizer):
         self._scale_factor = 1.0 / 256.0
 
     def __call__(self,
-                 batch_input: Union[np.ndarray, torch.Tensor],
-                 device: torch.device = torch.device('cpu')) -> Union[
-        np.ndarray, torch.Tensor]:
+                 batch_input: t.TData,
+                 device: th.device = th.device('cpu')) -> t.TData:
         return batch_input * self._scale_factor

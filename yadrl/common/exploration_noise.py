@@ -1,7 +1,7 @@
-from typing import Union
-
 import numpy as np
-import torch
+import torch as th
+
+import yadrl.common.types as t
 
 
 class GaussianNoise:
@@ -30,11 +30,11 @@ class GaussianNoise:
         self._sigma -= self._sigma_decay_factor
         self._sigma = max(self._sigma, self._sigma_min)
 
-    def __call__(self) -> Union[np.ndarray, torch.Tensor]:
+    def __call__(self) -> t.TData:
         self._reduce_sigma()
         if GaussianNoise.TORCH_BACKEND:
-            return torch.normal(mean=self._mean,
-                                std=torch.ones(self._dim) * self._sigma)
+            return th.normal(mean=self._mean,
+                             std=th.ones(self._dim) * self._sigma)
         return np.random.normal(loc=self._mean, scale=self._sigma,
                                 size=self._dim)
 
@@ -63,12 +63,11 @@ class OUNoise(GaussianNoise):
         :param n_step_annealing: float, decremental steps for sigma
         :param dt: float,
         """
-        super(OUNoise, self).__init__(dim, mean, sigma, sigma_min,
-                                      n_step_annealing)
+        super().__init__(dim, mean, sigma, sigma_min, n_step_annealing)
         self._dt = dt
         self._theta = theta
 
-        self._state = torch.ones(self._dim) * self._mean
+        self._state = th.ones(self._dim) * self._mean
         self.reset()
 
     def reset(self):
@@ -76,18 +75,18 @@ class OUNoise(GaussianNoise):
         Reset state of the noise
         """
         if GaussianNoise.TORCH_BACKEND:
-            self._state = torch.ones(self._dim) * self._mean
+            self._state = th.ones(self._dim) * self._mean
         else:
             self._state = np.ones(self._dim) * self._mean
 
-    def __call__(self) -> Union[np.ndarray, torch.Tensor]:
+    def __call__(self) -> t.TData:
         """
         Calculate noise value on the step t
         :return: np.ndarray, noise
         """
         self._reduce_sigma()
         if GaussianNoise.TORCH_BACKEND:
-            noise = torch.normal(mean=torch.zeros(self._dim))
+            noise = th.normal(mean=th.zeros(self._dim))
         else:
             noise = np.random.normal(loc=np.zeros(self._dim))
         x = (self._state + self._theta * (self._mean - self._state) * self._dt

@@ -10,8 +10,8 @@ class FactorizedNoisyLinear(nn.Linear):
                  out_features: int,
                  sigma_init: float = 0.5,
                  bias: bool = True):
-        self.mu_init = 1.0 / np.sqrt(in_features)
-        self.sigma_init = sigma_init / np.sqrt(in_features)
+        self.mu_init: float = 1.0 / np.sqrt(in_features)
+        self.sigma_init: float = sigma_init / np.sqrt(in_features)
         super().__init__(in_features, out_features, bias)
         self.weight_sigma = nn.Parameter(
             th.Tensor(out_features, in_features), requires_grad=True)

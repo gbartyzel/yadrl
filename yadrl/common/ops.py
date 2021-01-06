@@ -23,8 +23,12 @@ def scaled_logsoftmax(input_value: th.Tensor,
     return diff - term * th.log(th.exp(diff / term).sum(dim, keepdim))
 
 
-def to_tensor(data, device):
-    return th.from_numpy(data).float().to(device)
+def to_tensor(data: np.ndarray, device: th.device) -> th.Tensor:
+    return th.from_numpy(data.copy()).float().to(device)
+
+
+def to_numpy(data: th.Tensor) -> np.ndarray:
+    return data.clone().cpu().detach().numpy()
 
 
 def l2_loss(model: th.nn.Module, l2_lambda: float,
@@ -111,8 +115,8 @@ def l2_projection(p: th.Tensor,
 def l2_projection(p: th.Tensor,
                   z: th.Tensor,
                   tz: th.Tensor) -> th.Tensor:
-    v_min: float = float(z.squeeze()[0].clone().cpu().numpy())
-    v_max: float = float(z.squeeze()[-1].clone().cpu().numpy())
+    v_min: float = float(to_numpy(z.squeeze()[0]))
+    v_max: float = float(to_numpy(z.squeeze()[-1]))
     z_delta: float = (v_max - v_min) / (z.shape[-1] - 1)
     proj: th.Tensor = th.zeros_like(p)
 
@@ -142,3 +146,10 @@ def create_log_dir(log_dir: str, experiment_name: str) -> str:
     now = datetime.datetime.now().strftime('%d_%m_%y_%H_%M_%S')
     log_name = '{}_{}'.format(experiment_name, now)
     return os.path.join(log_dir, log_name)
+
+
+def soft_update(params: th.nn.parameter,
+                target_params: th.nn.parameter,
+                factor: float):
+    for param, t_param in zip(params, target_params):
+        t_param.data.copy_(t_param.data * (1.0 - factor) + param.data * factor)

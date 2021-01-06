@@ -1,12 +1,14 @@
 from copy import deepcopy
-from typing import Any, Sequence, Union
+from itertools import chain
+from typing import Sequence
 
 import numpy as np
-import torch
+import torch as th
 import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.ops as ops
+import yadrl.common.types as t
 from yadrl.agents.agent import OffPolicyAgent
 from yadrl.common.exploration_noise import GaussianNoise
 from yadrl.common.memory import Batch
@@ -41,22 +43,22 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         self._noise_scale_factor = noise_scale_factor
 
     @property
-    def pi(self):
+    def pi(self) -> nn.Module:
         return self._networks['actor']
 
     @property
-    def qv(self):
+    def qv(self) -> nn.Module:
         return self._networks['critic']
 
     @property
-    def target_pi(self):
+    def target_pi(self) -> nn.Module:
         return self._networks['target_actor']
 
     @property
-    def target_qv(self):
+    def target_qv(self) -> nn.Module:
         return self._networks['target_critic']
 
-    def _initialize_networks(self, phi: nn.Module):
+    def _initialize_networks(self, phi: t.TModuleDict) -> t.TModuleDict:
         support_dim = self._support_dim if hasattr(self, '_support_dim') else 1
         actor_net = Head.build(head_type='simple', phi=phi['actor'],
                                output_dim=self._action_dim,
@@ -79,30 +81,23 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
                 'target_critic': target_critic_net}
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
-        state = super()._act(state)
         self.pi.eval()
-        with torch.no_grad():
-            action = self.pi(state)
+        with th.no_grad():
+            action = self.pi(super()._act(state))
         self.pi.train()
         if train:
             noise = self._noise_scale_factor * self._noise().to(self._device)
-            action = torch.clamp(action + noise, *self._action_limit)
+            action = th.clamp(action + noise, *self._action_limit)
         return action[0].cpu().numpy()
 
-    def _observe(self,
-                 state: Union[np.ndarray, torch.Tensor],
-                 action: Union[np.ndarray, torch.Tensor],
-                 reward: Union[float, torch.Tensor],
-                 next_state: Union[np.ndarray, torch.Tensor],
-                 done: Any):
+    def _observe(self, state: t.TData, action: t.TActionOption,
+                 reward: float, next_state: t.TData, done: bool):
         super()._observe(state, action, reward, next_state, done)
         if done:
             self._noise.reset()
 
-    def _sample_q(self,
-                  state: torch.Tensor,
-                  action: torch.Tensor,
-                  sample_noise: bool = False) -> torch.Tensor:
+    def _sample_q(self, state: th.Tensor, action: th.Tensor,
+                  sample_noise: bool = False) -> th.Tensor:
         self.qv.reset_noise()
         if sample_noise:
             self.qv.sample_noise()
@@ -130,8 +125,8 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         self._qv_optim.step()
         self._writer.add_scalar('train/loss/qv', loss.item(), self._env_step)
 
-    def _compute_critic_loss(self, batch: Batch) -> torch.Tensor:
-        with torch.no_grad():
+    def _compute_critic_loss(self, batch: Batch) -> th.Tensor:
+        with th.no_grad():
             next_action = self.target_pi(batch.next_state)
             self.target_qv.sample_noise()
             target_next_q = self.target_qv(batch.next_state, next_action)
@@ -155,11 +150,10 @@ class DDPG(OffPolicyAgent, agent_type='ddpg'):
         self._writer.add_scalar('train/loss/pi', loss.item(), self._env_step)
 
     @property
-    def parameters(self):
-        return list(self.qv.named_parameters()) + \
-               list(self.pi.named_parameters())
+    def parameters(self) -> t.TNamedParameters:
+        return chain(self.qv.named_parameters(), self.pi.named_parameters())
 
     @property
-    def target_parameters(self):
-        return list(self.target_qv.named_parameters()) + \
-               list(self.target_pi.named_parameters())
+    def target_parameters(self) -> t.TNamedParameters:
+        return chain(self.target_qv.named_parameters(),
+                     self.target_pi.named_parameters())

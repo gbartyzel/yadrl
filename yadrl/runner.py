@@ -6,7 +6,7 @@ from yadrl.agents.agent import Agent
 from yadrl.common.configuration import Configuration
 
 
-def flatten_dictionary(in_dict):
+def flatten_dictionary(in_dict) -> dict:
     items: dict = {}
     for k, v in in_dict.items():
         if isinstance(v, collections.abc.MutableMapping) and k != 'body':

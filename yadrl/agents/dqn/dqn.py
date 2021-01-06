@@ -1,13 +1,14 @@
 import copy
-import random
-from typing import Dict
 
-import torch
+import numpy as np
+import torch as th
 import torch.nn as nn
 import torch.optim as optim
 
 import yadrl.common.ops as ops
+import yadrl.common.types as t
 from yadrl.agents.agent import OffPolicyAgent
+from yadrl.common.memory import Batch
 from yadrl.common.scheduler import BaseScheduler
 from yadrl.networks.head import Head
 
@@ -46,14 +47,14 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         return self._networks['target_model']
 
     @property
-    def parameters(self):
+    def parameters(self) -> t.TNamedParameters:
         return self.model.named_parameters()
 
     @property
-    def target_parameters(self):
+    def target_parameters(self) -> t.TNamedParameters:
         return self.target_model.named_parameters()
 
-    def _initialize_networks(self, phi: nn.Module) -> Dict[str, nn.Module]:
+    def _initialize_networks(self, phi: t.TModuleDict) -> t.TModuleDict:
         head_type = self.head_types[int(self._use_dueling)]
         support_dim = self._support_dim if hasattr(self, '_support_dim') else 1
         network = Head.build(head_type=head_type,
@@ -68,21 +69,18 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         target_network.eval()
         return {'model': network, 'target_model': target_network}
 
-    def _act(self, state: int, train: bool = False) -> int:
-        state = super()._act(state)
-
+    def _act(self, state: np.ndarray, train: bool = False) -> int:
         self.model.eval()
-        with torch.no_grad():
-            q_value = self._sample_q(state, train)
+        with th.no_grad():
+            q_value = self._sample_q(super()._act(state), train)
         self.model.train()
 
-        eps_flag = random.random() > self._epsilon_scheduler.step()
+        eps_flag = np.random.rand() > self._epsilon_scheduler.step()
         if eps_flag or (self._noise_type != 'none') or not train:
             return q_value.argmax(-1)[0].cpu().numpy()
-        return random.randint(0, self._action_dim - 1)
+        return np.random.randint(0, self._action_dim)
 
-    def _sample_q(self, state: torch.Tensor,
-                  train: bool = False) -> torch.Tensor:
+    def _sample_q(self, state: th.Tensor, train: bool = False) -> th.Tensor:
         self.model.reset_noise()
         if train:
             self.model.sample_noise()
@@ -101,8 +99,8 @@ class DQN(OffPolicyAgent, agent_type='dqn'):
         self._optim.step()
         self._update_target(self.model, self.target_model)
 
-    def _compute_loss(self, batch):
-        with torch.no_grad():
+    def _compute_loss(self, batch: Batch) -> th.Tensor:
+        with th.no_grad():
             self.target_model.sample_noise()
             target_next_q = self.target_model(batch.next_state)
             if self._use_double_q:

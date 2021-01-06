@@ -1,12 +1,11 @@
-from typing import Optional
-from typing import Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
 
 class RunningMeanStd:
     def __init__(self,
-                 dim: Tuple[int, ...],
+                 dim: Sequence[int],
                  eps: Optional[float] = 1e-8):
         self._count = eps
         self._mean = np.ones(dim) * eps
@@ -55,13 +54,13 @@ class RunningMeanStd:
         self._var = m2 / (self._count + batch_count - 1)
 
     @property
-    def mean(self):
+    def mean(self) -> np.ndarray:
         return self._mean
 
     @property
-    def variance(self):
+    def variance(self) -> np.ndarray:
         return self._var
 
     @property
-    def count(self):
+    def count(self) -> float:
         return self._count

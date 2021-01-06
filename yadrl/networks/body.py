@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-import torch
+import torch as th
 import torch.nn as nn
 
 from yadrl.networks.body_parameter import BodyParameters
@@ -10,7 +10,7 @@ from yadrl.networks.layer import Layer
 class Body(nn.Module):
     def __init__(self, parameters: BodyParameters):
         super().__init__()
-        self._body_parameters: BodyParameters = parameters
+        self._body_parameters = parameters
         self._body = self._build_network()
 
         if self._body_parameters.output_dim:
@@ -19,13 +19,13 @@ class Body(nn.Module):
             self.output_dim = self._body[-1].out_dim
 
     def forward(self,
-                x_primary: torch.Tensor,
-                x_secondary: Optional[torch.Tensor] = None) -> torch.Tensor:
+                x_1: th.Tensor,
+                x_2: Optional[th.Tensor] = None) -> th.Tensor:
         for i, layer in enumerate(self._body):
             if i == self._body_parameters.action_layer:
-                x_primary = torch.cat((x_primary, x_secondary), dim=1)
-            x_primary = layer(x_primary)
-        return x_primary
+                x_1 = th.cat((x_1, x_2), dim=1)
+            x_1 = layer(x_1)
+        return x_1
 
     def sample_noise(self):
         for layer in self._body:
@@ -39,7 +39,7 @@ class Body(nn.Module):
     def from_dict(parameters: Dict[str, Any]) -> 'Body':
         return Body(BodyParameters(parameters))
 
-    def _build_network(self) -> nn.Module:
+    def _build_network(self) -> nn.ModuleList:
         body = nn.ModuleList()
         input_size = self._body_parameters.input.primary
         for i, params in enumerate(self._body_parameters.layers):

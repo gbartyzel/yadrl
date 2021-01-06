@@ -1,10 +1,11 @@
 import numpy as np
-import torch
+import torch as th
 import torch.nn.functional as F
 import torch.optim as optim
 
 import yadrl.common.ops as ops
 from yadrl.agents.dqn.dqn import DQN
+from yadrl.common.memory import Batch
 
 
 class MDQN(DQN, agent_type='munchausen_dqn'):
@@ -21,14 +22,14 @@ class MDQN(DQN, agent_type='munchausen_dqn'):
         self._temperature_tuning = temperature_tuning
         if temperature_tuning:
             self._target_entropy = -np.prod(self._action_dim)
-            self._log_temperature = torch.zeros(
+            self._log_temperature = th.zeros(
                 1, requires_grad=True, device=self._device)
             self._temperature_optim = optim.Adam([self._log_temperature],
                                                  lr=temperature_learning_rate)
         self._temperature = 1.0 / self._reward_scaling
 
-    def _compute_loss(self, batch) -> torch.Tensor:
-        with torch.no_grad():
+    def _compute_loss(self, batch: Batch) -> th.Tensor:
+        with th.no_grad():
             self.target_model.sample_noise()
             target_q_next = self.target_model(batch.next_state)
             next_pi = F.softmax(target_q_next / self._temperature, -1)
@@ -54,11 +55,11 @@ class MDQN(DQN, agent_type='munchausen_dqn'):
 
         return loss
 
-    def _update_temperature(self, state: torch.Tensor):
+    def _update_temperature(self, state: th.Tensor):
         q_value = self._sample_q(state, True)
         log_pi = ops.scaled_logsoftmax(q_value, self._temperature)
-        loss = torch.mean(-self._log_temperature
-                          * (log_pi + self._target_entropy).detach())
+        loss = th.mean(-self._log_temperature
+                       * (log_pi + self._target_entropy).detach())
 
         self._temperature_optim.zero_grad()
         loss.backward()
