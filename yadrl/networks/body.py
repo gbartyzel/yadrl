@@ -18,9 +18,7 @@ class Body(nn.Module):
         else:
             self.output_dim = self._body[-1].out_dim
 
-    def forward(self,
-                x_1: th.Tensor,
-                x_2: Optional[th.Tensor] = None) -> th.Tensor:
+    def forward(self, x_1: th.Tensor, x_2: Optional[th.Tensor] = None) -> th.Tensor:
         for i, layer in enumerate(self._body):
             if i == self._body_parameters.action_layer:
                 x_1 = th.cat((x_1, x_2), dim=1)
@@ -36,7 +34,7 @@ class Body(nn.Module):
             layer.reset_noise()
 
     @staticmethod
-    def from_dict(parameters: Dict[str, Any]) -> 'Body':
+    def from_dict(parameters: Dict[str, Any]) -> "Body":
         return Body(BodyParameters(parameters))
 
     def _build_network(self) -> nn.ModuleList:
@@ -45,10 +43,10 @@ class Body(nn.Module):
         for i, params in enumerate(self._body_parameters.layers):
             if self._body_parameters.action_layer == i:
                 input_size += self._body_parameters.input.secondary
-            if params['layer_type'] == 'flatten':
+            if params["layer_type"] == "flatten":
                 layer = nn.Flatten()
             else:
                 layer = Layer.build(input_size, **params)
-            input_size = params['out_dim']
+            input_size = params["out_dim"]
             body.append(layer)
         return body

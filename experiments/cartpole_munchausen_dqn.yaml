@@ -1,11 +1,11 @@
-cartpole_dqn:
-  agent_type: 'dqn'
+cartpole_mdqn:
+  agent_type: 'munchausen_dqn'
   env_id: 'CartPole-v0'
   common:
     discount_factor: 0.99
     n_step: 1
     batch_size: 32
-    reward_scaling: 1.0
+    reward_scaling: 1
     warm_up_steps: 1000
     polyak_factor: 0.0
     target_update_frequency: 100
@@ -15,9 +15,11 @@ cartpole_dqn:
     log_path: 'output'
   specific:
     learning_rate: 0.001
+    entropy_learning_rate: 0.001
     use_double_q: false
     use_dueling: false
-    use_huber_loss_fn: false
+    use_huber_loss_fn: true
+    temperature_tuning: true
     head_hidden_dim: [128]
   state_normalizer:
     type: null
@@ -27,7 +29,7 @@ cartpole_dqn:
     type: 'linear'
     parameters:
       start_value: 1.0
-      end_value: 0.05
+      end_value: 0.01
       annealing_steps: 2000
   memory:
     capacity: 100000

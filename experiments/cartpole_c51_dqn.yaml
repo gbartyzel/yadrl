@@ -1,5 +1,5 @@
-cartpole_dqn:
-  agent_type: 'dqn'
+cartpole_c51_dqn:
+  agent_type: 'categorical_dqn'
   env_id: 'CartPole-v0'
   common:
     discount_factor: 0.99
@@ -17,8 +17,9 @@ cartpole_dqn:
     learning_rate: 0.001
     use_double_q: false
     use_dueling: false
-    use_huber_loss_fn: false
     head_hidden_dim: [128]
+    support_dim: 51
+    v_limit: [0.0, 200.0]
   state_normalizer:
     type: null
     parameters: null

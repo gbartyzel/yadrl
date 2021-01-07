@@ -16,7 +16,7 @@ from yadrl.common.normalizer import DummyNormalizer
 
 
 class Agent(abc.ABC):
-    registered_agents: Dict[str, 'Agent'] = {}
+    registered_agents: Dict[str, "Agent"] = {}
 
     def __init_subclass__(cls, agent_type: str = None, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -24,27 +24,30 @@ class Agent(abc.ABC):
             cls.registered_agents[agent_type] = cls
 
     @classmethod
-    def build(cls, agent_type: str, **kwargs) -> 'Agent':
+    def build(cls, agent_type: str, **kwargs) -> "Agent":
         import os
+
         for file in os.listdir(os.path.dirname(__file__)):
-            if '__' in file:
+            if "__" in file:
                 continue
             if os.path.isdir(os.path.join(os.path.dirname(__file__), file)):
-                exec('import yadrl.agents.' + file)
+                exec("import yadrl.agents." + file)
         return cls.registered_agents[agent_type](**kwargs)
 
-    def __init__(self,
-                 env: gym.Env,
-                 body: nn.Module,
-                 state_normalizer: DummyNormalizer = DummyNormalizer(),
-                 reward_scaling: float = 1.0,
-                 discount_factor: float = 0.99,
-                 batch_size: int = 64,
-                 n_step: int = 1,
-                 update_steps: int = 1,
-                 experiment_name: str = '',
-                 log_path: str = './output',
-                 seed: int = 1337):
+    def __init__(
+        self,
+        env: gym.Env,
+        body: nn.Module,
+        state_normalizer: DummyNormalizer = DummyNormalizer(),
+        reward_scaling: float = 1.0,
+        discount_factor: float = 0.99,
+        batch_size: int = 64,
+        n_step: int = 1,
+        update_steps: int = 1,
+        experiment_name: str = "",
+        log_path: str = "./output",
+        seed: int = 1337,
+    ):
         super().__init__()
         self._env = env
         self._state = None
@@ -53,7 +56,7 @@ class Agent(abc.ABC):
         ops.set_seeds(seed)
         self._data_to_log = dict()
 
-        self._device = th.device('cuda' if th.cuda.is_available() else 'cpu')
+        self._device = th.device("cuda" if th.cuda.is_available() else "cpu")
 
         self._state_dim = int(np.prod(self._env.observation_space.shape))
         if isinstance(self._env.action_space, Box):
@@ -67,12 +70,12 @@ class Agent(abc.ABC):
         self._reward_scaling = reward_scaling
         self._update_steps = update_steps
 
-        self._rollout = Rollout(n_step, self._env.action_space,
-                                self._env.observation_space)
+        self._rollout = Rollout(
+            n_step, self._env.action_space, self._env.observation_space
+        )
         self._state_normalizer = state_normalizer
 
-        self._writer = SummaryWriter(
-            ops.create_log_dir(log_path, experiment_name))
+        self._writer = SummaryWriter(ops.create_log_dir(log_path, experiment_name))
 
         self._networks = self._initialize_networks(body)
 
@@ -104,30 +107,37 @@ class Agent(abc.ABC):
         if model:
             for k in self._networks.keys():
                 self._networks[k].load_state_dict(model[k])
-            self._env_step = model['step']
+            self._env_step = model["step"]
 
     def save(self):
         state_dict = {k: net.state_dict() for k, net in self._networks.items()}
-        state_dict['step'] = self._env_step
-        th.save(state_dict, 'model_{}.pth'.format(self._env_step))
+        state_dict["step"] = self._env_step
+        th.save(state_dict, "model_{}.pth".format(self._env_step))
 
     def _act(self, state: np.ndarray, *args) -> t.TData:
         state = ops.to_tensor(state, self._device).unsqueeze(0)
         return self._state_normalizer(state, self._device)
 
-    def _observe(self, state: t.TData, action: Union[np.ndarray, int],
-                 reward: float, next_state: t.TData, done: bool):
+    def _observe(
+        self,
+        state: t.TData,
+        action: Union[np.ndarray, int],
+        reward: float,
+        next_state: t.TData,
+        done: bool,
+    ):
         pass
 
     def _log(self, reward: float):
-        self._writer.add_scalar('train/reward', reward, self._env_step)
+        self._writer.add_scalar("train/reward", reward, self._env_step)
         for k, v in self._data_to_log.items():
             self._writer.add_scalar(k, v, self._env_step)
 
         for name, module in self._networks.items():
             for p_name, param in module.named_parameters():
-                self._writer.add_histogram('{}/{}'.format(name, p_name),
-                                           param, self._env_step)
+                self._writer.add_histogram(
+                    "{}/{}".format(name, p_name), param, self._env_step
+                )
 
     @property
     @abc.abstractmethod
@@ -149,14 +159,15 @@ class Agent(abc.ABC):
 
 
 class OffPolicyAgent(Agent):
-
-    def __init__(self,
-                 memory: ReplayMemory,
-                 warm_up_steps: int = 64,
-                 polyak_factor: float = 0.0,
-                 update_frequency: int = 1,
-                 target_update_frequency: int = 1000,
-                 **kwargs):
+    def __init__(
+        self,
+        memory: ReplayMemory,
+        warm_up_steps: int = 64,
+        polyak_factor: float = 0.0,
+        update_frequency: int = 1,
+        target_update_frequency: int = 1000,
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self._warm_up_steps = warm_up_steps
 
@@ -182,11 +193,16 @@ class OffPolicyAgent(Agent):
                 total_reward = []
         pb.close()
 
-    def _observe(self, state: t.TData, action: t.TActionOption,
-                 reward: float, next_state: t.TData, done: bool):
+    def _observe(
+        self,
+        state: t.TData,
+        action: t.TActionOption,
+        reward: float,
+        next_state: t.TData,
+        done: bool,
+    ):
         self._state_normalizer.update(state)
-        self._rollout.push(state, action, reward, next_state, done,
-                           self._discount)
+        self._rollout.push(state, action, reward, next_state, done, self._discount)
         transition = self._rollout.sample()
         if transition is None:
             return
@@ -203,11 +219,12 @@ class OffPolicyAgent(Agent):
 
     def _update_target(self, model: nn.Module, target_model: nn.Module):
         if self._use_soft_update:
-            ops.soft_update(model.parameters(), target_model.parameters(),
-                            self._polyak)
+            ops.soft_update(model.parameters(), target_model.parameters(), self._polyak)
         else:
-            if self._env_step / self._update_frequency \
-                    % self._target_update_frequency == 0:
+            if (
+                self._env_step / self._update_frequency % self._target_update_frequency
+                == 0
+            ):
                 target_model.load_state_dict(model.state_dict())
 
     @abc.abstractmethod

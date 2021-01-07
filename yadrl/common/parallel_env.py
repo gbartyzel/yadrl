@@ -7,19 +7,16 @@ from numpy import ndarray
 
 
 class WorkerEnv(mp.Process):
-    def __init__(self,
-                 worker_id: int,
-                 conn: connection.Connection,
-                 env_name: str):
+    def __init__(self, worker_id: int, conn: connection.Connection, env_name: str):
         super(WorkerEnv, self).__init__()
         self._worker_id = worker_id
         self._conn = conn
         self._env = gym.make(env_name)
 
         self._state_machine = {
-            'step': self._step,
-            'reset': self._reset,
-            'close': self._close
+            "step": self._step,
+            "reset": self._reset,
+            "close": self._close,
         }
 
     def run(self):
@@ -43,7 +40,7 @@ class WorkerEnv(mp.Process):
     def _close(self, *args):
         self._env.close()
         self._conn.send(0)
-        print('Worker {} finished job!'.format(self._worker_id))
+        print("Worker {} finished job!".format(self._worker_id))
         return True
 
 
@@ -65,22 +62,30 @@ class ParallelEnv(object):
         worker = WorkerEnv(worker_id, worker_conn, self._env_id)
         return worker, controller_conn
 
-    def step(self, actions: Union[ndarray, Sequence[ndarray]]) -> Tuple[
-        Tuple[ndarray, ...], Tuple[float, ...],
-        Tuple[bool, ...], Tuple[Dict[str, Any], ...]]:
-        result = (self._send_and_recv(conn, 'step', actions[i])
-                  for i, conn in enumerate(self._controller_conns))
+    def step(
+        self, actions: Union[ndarray, Sequence[ndarray]]
+    ) -> Tuple[
+        Tuple[ndarray, ...],
+        Tuple[float, ...],
+        Tuple[bool, ...],
+        Tuple[Dict[str, Any], ...],
+    ]:
+        result = (
+            self._send_and_recv(conn, "step", actions[i])
+            for i, conn in enumerate(self._controller_conns)
+        )
         state, reward, done, info = zip(*result)
         return state, reward, done, info
 
     def reset(self) -> Tuple[ndarray, ...]:
-        states = tuple(self._send_and_recv(conn, 'reset') for conn in
-                       self._controller_conns)
+        states = tuple(
+            self._send_and_recv(conn, "reset") for conn in self._controller_conns
+        )
         return states
 
     def close(self):
         for conn in self._controller_conns:
-            self._send_and_recv(conn, 'close')
+            self._send_and_recv(conn, "close")
         for worker in self._workers:
             worker.join()
 

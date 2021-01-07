@@ -9,36 +9,47 @@ import yadrl.common.types as t
 from yadrl.common.normalizer import DummyNormalizer
 from yadrl.common.ops import to_tensor
 
-Batch = namedtuple('Batch', ['state', 'action', 'reward', 'next_state', 'mask',
-                             'discount_factor'])
+Batch = namedtuple(
+    "Batch", ["state", "action", "reward", "next_state", "mask", "discount_factor"]
+)
 
 
 class BaseMemory:
-    def __init__(self,
-                 capacity: int,
-                 action_space: gym.spaces.Space,
-                 observation_space: gym.spaces.Space):
+    def __init__(
+        self,
+        capacity: int,
+        action_space: gym.spaces.Space,
+        observation_space: gym.spaces.Space,
+    ):
         self._capacity = capacity
         self._size = 0
         self._transition_idx = 0
 
         self._observation_buffer = np.zeros(
-            (capacity,) + observation_space.shape,
-            observation_space.dtype)
+            (capacity,) + observation_space.shape, observation_space.dtype
+        )
         if isinstance(action_space, gym.spaces.Box):
-            self._action_buffer = np.zeros((capacity,) + action_space.shape,
-                                           action_space.dtype)
+            self._action_buffer = np.zeros(
+                (capacity,) + action_space.shape, action_space.dtype
+            )
         if isinstance(action_space, gym.spaces.Discrete):
             self._action_buffer = np.zeros((capacity, 1), action_space.dtype)
         self._reward_buffer = np.zeros((capacity, 1), np.float32)
         self._next_observation_buffer = np.zeros(
-            (capacity,) + observation_space.shape, observation_space.dtype)
+            (capacity,) + observation_space.shape, observation_space.dtype
+        )
         self._terminal_buffer = np.zeros((capacity, 1), np.bool)
         self._discount_buffer = np.zeros((capacity, 1), np.float32)
 
-    def push(self, state: np.ndarray, action: t.TActionOption,
-             reward: float, next_state: np.ndarray, terminal: bool,
-             discount_factor: float):
+    def push(
+        self,
+        state: np.ndarray,
+        action: t.TActionOption,
+        reward: float,
+        next_state: np.ndarray,
+        terminal: bool,
+        discount_factor: float,
+    ):
         self._observation_buffer[self._transition_idx] = state
         self._action_buffer[self._transition_idx] = action
         self._reward_buffer[self._transition_idx] = reward
@@ -51,8 +62,7 @@ class BaseMemory:
         self._observation_buffer = self._np_popleft(self._observation_buffer)
         self._action_buffer = self._np_popleft(self._action_buffer)
         self._reward_buffer = self._np_popleft(self._reward_buffer)
-        self._next_observation_buffer = self._np_popleft(
-            self._next_observation_buffer)
+        self._next_observation_buffer = self._np_popleft(self._next_observation_buffer)
         self._terminal_buffer = self._np_popleft(self._terminal_buffer)
         self._discount_buffer = self._np_popleft(self._discount_buffer)
         self._size -= 1
@@ -71,8 +81,7 @@ class BaseMemory:
         self._observation_buffer = np.zeros_like(self._observation_buffer)
         self._action_buffer = np.zeros_like(self._action_buffer)
         self._reward_buffer = np.zeros_like(self._reward_buffer)
-        self._next_observation_buffer = np.zeros_like(
-            self._next_observation_buffer)
+        self._next_observation_buffer = np.zeros_like(self._next_observation_buffer)
         self._terminal_buffer = np.zeros_like(self._terminal_buffer)
         self._discount_buffer = np.zeros_like(self._discount_buffer)
         self._size = 0
@@ -89,24 +98,26 @@ class BaseMemory:
 
 
 class ReplayMemory(BaseMemory):
-    def __init__(self,
-                 combined: bool = False,
-                 device: str = 'cpu',
-                 **kwargs):
+    def __init__(self, combined: bool = False, device: str = "cpu", **kwargs):
         super().__init__(**kwargs)
         self._combined = combined
         self._device = th.device(device)
 
-    def push(self, state: np.ndarray, action: t.TActionOption,
-             reward: float, next_state: np.ndarray, terminal: bool,
-             discount_factor: float):
-        super().push(state, action, reward, next_state, terminal,
-                     discount_factor)
+    def push(
+        self,
+        state: np.ndarray,
+        action: t.TActionOption,
+        reward: float,
+        next_state: np.ndarray,
+        terminal: bool,
+        discount_factor: float,
+    ):
+        super().push(state, action, reward, next_state, terminal, discount_factor)
         self._transition_idx = (self._transition_idx + 1) % self._capacity
 
-    def sample(self,
-               batch_size: int,
-               state_normalizer: DummyNormalizer = None) -> Batch:
+    def sample(
+        self, batch_size: int, state_normalizer: DummyNormalizer = None
+    ) -> Batch:
         if state_normalizer is None:
             state_normalizer = DummyNormalizer()
         if self._combined:
@@ -116,18 +127,24 @@ class ReplayMemory(BaseMemory):
             idxs = np.append(idxs, np.array(self._transition_idx))
 
         state_b = state_normalizer(
-            to_tensor(self._observation_buffer[idxs, ...], self._device),
-            self._device)
+            to_tensor(self._observation_buffer[idxs, ...], self._device), self._device
+        )
         action_b = to_tensor(self._action_buffer[idxs, ...], self._device)
         reward_b = to_tensor(self._reward_buffer[idxs, ...], self._device)
         next_state_b = state_normalizer(
             to_tensor(self._next_observation_buffer[idxs, ...], self._device),
-            self._device)
+            self._device,
+        )
         mask_b = to_tensor(self._terminal_buffer[idxs, ...], self._device)
         discount_b = to_tensor(self._discount_buffer[idxs, ...], self._device)
-        return Batch(state=state_b, action=action_b, reward=reward_b,
-                     next_state=next_state_b, mask=mask_b,
-                     discount_factor=discount_b)
+        return Batch(
+            state=state_b,
+            action=action_b,
+            reward=reward_b,
+            next_state=next_state_b,
+            mask=mask_b,
+            discount_factor=discount_b,
+        )
 
 
 class Rollout(BaseMemory):
@@ -135,13 +152,18 @@ class Rollout(BaseMemory):
     def ready(self) -> int:
         return self._size == self._capacity
 
-    def push(self, state: np.ndarray, action: Union[np.ndarray, int],
-             reward: float, next_state: np.ndarray, terminal: bool,
-             discount_factor: float):
+    def push(
+        self,
+        state: np.ndarray,
+        action: Union[np.ndarray, int],
+        reward: float,
+        next_state: np.ndarray,
+        terminal: bool,
+        discount_factor: float,
+    ):
         if self._size == self._capacity:
             self.popleft()
-        super().push(state, action, reward, next_state, terminal,
-                     discount_factor)
+        super().push(state, action, reward, next_state, terminal, discount_factor)
         self._transition_idx = min(self._transition_idx + 1, self._capacity - 1)
 
     def sample(self) -> Sequence[t.TTransition]:
@@ -152,7 +174,7 @@ class Rollout(BaseMemory):
                     transitions.append(self._get_transition())
                     self.popleft()
                 return transitions
-            return self._get_transition(),
+            return (self._get_transition(),)
         return None
 
     def _get_transition(self) -> t.TTransition:

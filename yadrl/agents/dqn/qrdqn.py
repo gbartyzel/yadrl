@@ -5,15 +5,20 @@ from yadrl.agents.dqn.dqn import DQN
 from yadrl.common.memory import Batch
 
 
-class QuantileDQN(DQN, agent_type='quantile_regression_dqn'):
-    head_types = ['distribution_value', 'distribution_dueling_value']
+class QuantileDQN(DQN, agent_type="quantile_regression_dqn"):
+    head_types = ["distribution_value", "distribution_dueling_value"]
 
     def __init__(self, support_dim: int = 51, **kwargs):
         self._support_dim = support_dim
         super().__init__(**kwargs)
+        step = 1.0 / self._support_dim
         self._cumulative_density = th.arange(
-            0.5 / self._support_dim, 1.0, 1.0 / self._support_dim,
-            device=self._device, dtype=th.float32).unsqueeze(0)
+            0.5 * step,
+            1.0,
+            step,
+            device=self._device,
+            dtype=th.float32,
+        ).unsqueeze(0)
 
     def _sample_q(self, state: th.Tensor, train: bool = False) -> th.Tensor:
         return super()._sample_q(state, train).mean(-1)
@@ -32,14 +37,18 @@ class QuantileDQN(DQN, agent_type='quantile_regression_dqn'):
             next_quantiles = next_quantiles[batch_vec, next_action, :]
 
             target_quantiles = ops.td_target(
-                batch.reward, batch.mask, next_quantiles,
-                batch.discount_factor * self._discount)
+                batch.reward,
+                batch.mask,
+                next_quantiles,
+                batch.discount_factor * self._discount,
+            )
 
         action = batch.action.long().squeeze()
         self.model.sample_noise()
         expected_quantiles = self.model(batch.state)
         expected_quantiles = expected_quantiles[batch_vec, action, :]
 
-        loss = ops.quantile_hubber_loss(expected_quantiles, target_quantiles,
-                                        self._cumulative_density)
+        loss = ops.quantile_hubber_loss(
+            expected_quantiles, target_quantiles, self._cumulative_density
+        )
         return loss

@@ -7,12 +7,14 @@ import yadrl.common.types as t
 class GaussianNoise:
     TORCH_BACKEND = True
 
-    def __init__(self,
-                 dim: int,
-                 mean: float = 0.0,
-                 sigma: float = 1.0,
-                 sigma_min: float = 0.0,
-                 n_step_annealing: float = 1e6):
+    def __init__(
+        self,
+        dim: int,
+        mean: float = 0.0,
+        sigma: float = 1.0,
+        sigma_min: float = 0.0,
+        n_step_annealing: float = 1e6,
+    ):
         self._dim = dim
         self._mean = mean
         self._sigma = sigma
@@ -33,10 +35,8 @@ class GaussianNoise:
     def __call__(self) -> t.TData:
         self._reduce_sigma()
         if GaussianNoise.TORCH_BACKEND:
-            return th.normal(mean=self._mean,
-                             std=th.ones(self._dim) * self._sigma)
-        return np.random.normal(loc=self._mean, scale=self._sigma,
-                                size=self._dim)
+            return th.normal(mean=self._mean, std=th.ones(self._dim) * self._sigma)
+        return np.random.normal(loc=self._mean, scale=self._sigma, size=self._dim)
 
 
 class OUNoise(GaussianNoise):
@@ -45,14 +45,16 @@ class OUNoise(GaussianNoise):
     https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process
     """
 
-    def __init__(self,
-                 dim: int,
-                 mean: float = 0.0,
-                 theta: float = 0.15,
-                 sigma: float = 0.2,
-                 sigma_min: float = 0.0,
-                 n_step_annealing: float = 1e6,
-                 dt: float = 1e-2):
+    def __init__(
+        self,
+        dim: int,
+        mean: float = 0.0,
+        theta: float = 0.15,
+        sigma: float = 0.2,
+        sigma_min: float = 0.0,
+        n_step_annealing: float = 1e6,
+        dt: float = 1e-2,
+    ):
         """
         :param dim: int, dimension of ou process
         :param mean: float, asymptotic mean
@@ -89,7 +91,10 @@ class OUNoise(GaussianNoise):
             noise = th.normal(mean=th.zeros(self._dim))
         else:
             noise = np.random.normal(loc=np.zeros(self._dim))
-        x = (self._state + self._theta * (self._mean - self._state) * self._dt
-             + np.sqrt(self._dt) * self._sigma * noise)
+        x = (
+            self._state
+            + self._theta * (self._mean - self._state) * self._dt
+            + np.sqrt(self._dt) * self._sigma * noise
+        )
         self._state = x
         return x

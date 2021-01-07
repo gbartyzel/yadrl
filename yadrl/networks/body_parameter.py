@@ -22,14 +22,14 @@ class BodyParameters:
         if not isinstance(parameters, (str, dict)):
             raise TypeError()
         if isinstance(parameters, str):
-            with open(parameters, 'r') as yaml_file:
+            with open(parameters, "r") as yaml_file:
                 parameters: dict = yaml.safe_load(yaml_file)
 
-        self.input = InputParameters(**parameters['input'])
-        if 'output_dim' in parameters:
-            self.output_dim = parameters['output_dim']
+        self.input = InputParameters(**parameters["input"])
+        if "output_dim" in parameters:
+            self.output_dim = parameters["output_dim"]
 
-        if 'action_layer' in parameters:
-            self.action_layer = parameters['action_layer']
+        if "action_layer" in parameters:
+            self.action_layer = parameters["action_layer"]
 
-        self.layers = [layer for layer in parameters['layers']]
+        self.layers = [layer for layer in parameters["layers"]]

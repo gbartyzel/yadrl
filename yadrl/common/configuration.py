@@ -28,73 +28,79 @@ class Configuration:
 
     def __post_init__(self, config_path: str):
         data, self.experiment_name = self.__load_config(config_path)
-        self.agent_type = data['agent_type']
-        self.common = data['common']
-        self.specific = data['specific']
-        if 'state_normalizer' in data:
+        self.agent_type = data["agent_type"]
+        self.common = data["common"]
+        self.specific = data["specific"]
+        if "state_normalizer" in data:
             self.state_normalizer = self.__parse_state_normalizer(
-                data['state_normalizer'])
-        self.env = gym.make(data['env_id'])
-        if 'memory' in data:
+                data["state_normalizer"]
+            )
+        self.env = gym.make(data["env_id"])
+        if "memory" in data:
             self.memory = ReplayMemory(
-                **data['memory'],
+                **data["memory"],
                 observation_space=self.env.observation_space,
-                action_space=self.env.action_space)
-        if 'exploration_strategy' in data:
+                action_space=self.env.action_space
+            )
+        if "exploration_strategy" in data:
             self.exploration_strategy = self.__parse_exploration_strategy(
-                data['exploration_strategy'])
-        if any([key == 'layers' for key in data['body'].keys()]):
-            self.body = Body(BodyParameters(data['body']))
+                data["exploration_strategy"]
+            )
+        if any([key == "layers" for key in data["body"].keys()]):
+            self.body = Body(BodyParameters(data["body"]))
         else:
-            self.body = {k: Body(BodyParameters(data['body'][k]))
-                         for k in data['body'].keys()}
+            self.body = {
+                k: Body(BodyParameters(data["body"][k])) for k in data["body"].keys()
+            }
 
     @staticmethod
     def __load_config(config_path: str) -> Tuple[t.TConfig, str]:
-        with open(config_path, 'r') as config_file:
+        with open(config_path, "r") as config_file:
             data = yaml.safe_load(config_file)
         keys = list(data.keys())
         assert len(keys) == 1
         return data[keys[0]], keys[0]
 
-    def __parse_exploration_strategy(self, data: t.TConfig) -> Union[
-        sch.BaseScheduler, noise.GaussianNoise]:
-        action_type = data['action_type']
-        if action_type == 'discrete':
+    def __parse_exploration_strategy(
+        self, data: t.TConfig
+    ) -> Union[sch.BaseScheduler, noise.GaussianNoise]:
+        action_type = data["action_type"]
+        if action_type == "discrete":
             return self.__create_scheduler_policy(data)
-        elif action_type == 'continuous':
+        elif action_type == "continuous":
             return self.__create_noise_policy(data)
         else:
-            raise ValueError(
-                'Invalid action type! Should be discrete or continuous')
+            raise ValueError("Invalid action type! Should be discrete or continuous")
 
     @staticmethod
     def __create_scheduler_policy(data: t.TConfig) -> sch.BaseScheduler:
-        if data['type'] == 'linear':
-            return sch.LinearScheduler(**data['parameters'])
-        elif data['type'] == 'exponential':
-            return sch.ExponentialScheduler(**data['parameters'])
+        if data["type"] == "linear":
+            return sch.LinearScheduler(**data["parameters"])
+        elif data["type"] == "exponential":
+            return sch.ExponentialScheduler(**data["parameters"])
         else:
-            ValueError('Invalid epsilon schedule type!')
+            ValueError("Invalid epsilon schedule type!")
 
     def __create_noise_policy(self, data: t.TConfig) -> noise.GaussianNoise:
-        if data['type'] == 'gaussian':
-            return noise.GaussianNoise(dim=self.env.action_space.shape[0],
-                                       **data['parameters'])
-        elif data['type'] == 'ou':
-            return noise.OUNoise(dim=self.env.action_space.shape[0],
-                                 **data['parameters'])
+        if data["type"] == "gaussian":
+            return noise.GaussianNoise(
+                dim=self.env.action_space.shape[0], **data["parameters"]
+            )
+        elif data["type"] == "ou":
+            return noise.OUNoise(
+                dim=self.env.action_space.shape[0], **data["parameters"]
+            )
         else:
             ValueError()
 
     @staticmethod
     def __parse_state_normalizer(data: t.TConfig) -> norm.DummyNormalizer:
-        norm_type = data['type']
-        if norm_type == 'rms':
-            return norm.RMSNormalizer(**data['parameters'])
-        elif norm_type == 'scale':
-            return norm.ScaleNormalizer(**data['parameters'])
-        elif norm_type == 'image':
+        norm_type = data["type"]
+        if norm_type == "rms":
+            return norm.RMSNormalizer(**data["parameters"])
+        elif norm_type == "scale":
+            return norm.ScaleNormalizer(**data["parameters"])
+        elif norm_type == "image":
             return norm.ImageNormalizer()
         else:
             return norm.DummyNormalizer()

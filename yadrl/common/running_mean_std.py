@@ -4,9 +4,7 @@ import numpy as np
 
 
 class RunningMeanStd:
-    def __init__(self,
-                 dim: Sequence[int],
-                 eps: Optional[float] = 1e-8):
+    def __init__(self, dim: Sequence[int], eps: Optional[float] = 1e-8):
         self._count = eps
         self._mean = np.ones(dim) * eps
         self._var = np.zeros(dim)
@@ -29,28 +27,28 @@ class RunningMeanStd:
 
         self._compute_new_rms(batch_count, batch_mean, batch_var)
 
-    def set_parameters(self,
-                       mean: np.ndarray,
-                       variance: np.ndarray,
-                       count: int):
+    def set_parameters(self, mean: np.ndarray, variance: np.ndarray, count: int):
         self._mean = mean
         self._var = variance
         self._count = count
 
-    def _compute_new_rms(self,
-                         batch_count: int,
-                         batch_mean: np.ndarray,
-                         batch_var: np.ndarray):
+    def _compute_new_rms(
+        self, batch_count: int, batch_mean: np.ndarray, batch_var: np.ndarray
+    ):
         self._count += batch_count
         delta = batch_mean - self._mean
-        self._mean = ((self._count * self._mean + batch_count * batch_mean)
-                      / (self._count + batch_count))
+        self._mean = (self._count * self._mean + batch_count * batch_mean) / (
+            self._count + batch_count
+        )
 
         m_a = self._var * (self._count - 1)
         m_b = batch_var * (batch_count - 1)
 
-        m2 = (m_a + m_b + delta ** 2 * self._count * batch_count
-              / (self._count + batch_count))
+        m2 = (
+            m_a
+            + m_b
+            + delta ** 2 * self._count * batch_count / (self._count + batch_count)
+        )
         self._var = m2 / (self._count + batch_count - 1)
 
     @property

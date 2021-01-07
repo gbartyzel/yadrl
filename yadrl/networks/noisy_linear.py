@@ -5,20 +5,22 @@ import torch.nn.functional as F
 
 
 class FactorizedNoisyLinear(nn.Linear):
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 sigma_init: float = 0.5,
-                 bias: bool = True):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        sigma_init: float = 0.5,
+        bias: bool = True,
+    ):
         self.mu_init: float = 1.0 / np.sqrt(in_features)
         self.sigma_init: float = sigma_init / np.sqrt(in_features)
         super().__init__(in_features, out_features, bias)
         self.weight_sigma = nn.Parameter(
-            th.Tensor(out_features, in_features), requires_grad=True)
-        self.bias_sigma = nn.Parameter(th.Tensor(out_features),
-                                       requires_grad=True)
-        self.register_buffer('noise_in', th.zeros(1, in_features))
-        self.register_buffer('noise_out', th.zeros(out_features, 1))
+            th.Tensor(out_features, in_features), requires_grad=True
+        )
+        self.bias_sigma = nn.Parameter(th.Tensor(out_features), requires_grad=True)
+        self.register_buffer("noise_in", th.zeros(1, in_features))
+        self.register_buffer("noise_out", th.zeros(out_features, 1))
 
         self.weight_sigma.data.fill_(self.sigma_init)
         if bias:
@@ -34,10 +36,10 @@ class FactorizedNoisyLinear(nn.Linear):
         if bias is not None:
             bias_eps = self._factorize_noise(self.noise_out)
             bias = self.bias + self.bias_sigma * bias_eps.t()
-        weight_eps = th.mul(self._factorize_noise(self.noise_in),
-                            self._factorize_noise(self.noise_out))
-        return F.linear(
-            input_data, self.weight + self.weight_sigma * weight_eps, bias)
+        weight_eps = th.mul(
+            self._factorize_noise(self.noise_in), self._factorize_noise(self.noise_out)
+        )
+        return F.linear(input_data, self.weight + self.weight_sigma * weight_eps, bias)
 
     def sample_noise(self):
         th.randn(1, self.in_features, out=self.noise_in)
@@ -53,21 +55,22 @@ class FactorizedNoisyLinear(nn.Linear):
 
 
 class IndependentNoisyLinear(nn.Linear):
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 sigma_init: float = 0.017,
-                 bias: bool = True):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        sigma_init: float = 0.017,
+        bias: bool = True,
+    ):
         self.mu_init = np.sqrt(3.0 / self.in_features)
         self.sigma_init = sigma_init
         super().__init__(in_features, out_features, bias)
         self.weight_sigma = nn.Parameter(
-            th.Tensor(out_features, in_features), requires_grad=True)
-        self.bias_sigma = nn.Parameter(th.Tensor(out_features),
-                                       requires_grad=True)
-        self.register_buffer('weight_eps',
-                             th.zeros(out_features, in_features))
-        self.register_buffer('bias_eps', th.zeros(out_features))
+            th.Tensor(out_features, in_features), requires_grad=True
+        )
+        self.bias_sigma = nn.Parameter(th.Tensor(out_features), requires_grad=True)
+        self.register_buffer("weight_eps", th.zeros(out_features, in_features))
+        self.register_buffer("bias_eps", th.zeros(out_features))
         self.weight_sigma.data.fill_(self.sigma_init)
         if self.bias:
             self.bias_sigma.data.fill_(self.sigma_init)
@@ -83,7 +86,8 @@ class IndependentNoisyLinear(nn.Linear):
         if bias is not None:
             bias = self.bias + self.bias_sigma * self.bias_eps
         return F.linear(
-            input_data, self.weight + self.weight_sigma * self.weight_eps, bias)
+            input_data, self.weight + self.weight_sigma * self.weight_eps, bias
+        )
 
     def sample_noise(self):
         th.randn(self.out_features, self.in_features, out=self.weight_eps)

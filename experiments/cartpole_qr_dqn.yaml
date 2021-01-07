@@ -1,5 +1,5 @@
-cartpole_dqn:
-  agent_type: 'dqn'
+cartpole_qr_dqn:
+  agent_type: 'quantile_regression_dqn'
   env_id: 'CartPole-v0'
   common:
     discount_factor: 0.99
@@ -17,8 +17,8 @@ cartpole_dqn:
     learning_rate: 0.001
     use_double_q: false
     use_dueling: false
-    use_huber_loss_fn: false
     head_hidden_dim: [128]
+    support_dim: 64
   state_normalizer:
     type: null
     parameters: null

@@ -10,12 +10,12 @@ from yadrl.networks.layer import Layer
 
 
 class Head(nn.Module):
-    registered_heads: Dict[str, _VT] = {}
+    registered_heads: Dict[str, "Head"] = {}
 
     noise_map: Dict[str, str] = {
-        'none': 'linear',
-        'factorized': 'factorized_noisy_linear',
-        'independent': 'independent_noisy_linear'
+        "none": "linear",
+        "factorized": "factorized_noisy_linear",
+        "independent": "independent_noisy_linear",
     }
 
     def __init_subclass__(cls, head_type: str = None, **kwargs):
@@ -24,17 +24,19 @@ class Head(nn.Module):
             cls.registered_heads[head_type] = cls
 
     @classmethod
-    def build(cls, head_type: str, **kwargs) -> 'Head':
+    def build(cls, head_type: str, **kwargs) -> "Head":
         return cls.registered_heads[head_type](**kwargs)
 
-    def __init__(self,
-                 phi: Body,
-                 output_dim: int,
-                 support_dim: int = 1,
-                 noise_type: str = 'none',
-                 hidden_activation: str = 'relu',
-                 output_activation: str = 'none',
-                 hidden_dim: Sequence[int] = None):
+    def __init__(
+        self,
+        phi: Body,
+        output_dim: int,
+        support_dim: int = 1,
+        noise_type: str = "none",
+        hidden_activation: str = "relu",
+        output_activation: str = "none",
+        hidden_dim: Sequence[int] = None,
+    ):
         super().__init__()
         self._hidden_dim = hidden_dim
         if hidden_dim is None:
@@ -47,8 +49,9 @@ class Head(nn.Module):
         self._output_act_fn = output_activation
 
         self._phi = phi
-        self._heads = nn.ModuleList([
-            self._make_module(self._output_dim * self._support_dim)])
+        self._heads = nn.ModuleList(
+            [self._make_module(self._output_dim * self._support_dim)]
+        )
 
     def _forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         return self._phi(*input_data)
@@ -69,11 +72,15 @@ class Head(nn.Module):
         dims = (self._phi.output_dim,) + self._hidden_dim + (output_dim,)
         layers = []
         for i in range(len(dims) - 1):
-            layers.append(Layer.build(
-                in_dim=dims[i], out_dim=dims[i + 1],
-                activation=self._get_act_fn(i, len(dims)),
-                layer_init=self._get_init_fn(i, len(dims)),
-                layer_type=self._layer_type))
+            layers.append(
+                Layer.build(
+                    in_dim=dims[i],
+                    out_dim=dims[i + 1],
+                    activation=self._get_act_fn(i, len(dims)),
+                    layer_init=self._get_init_fn(i, len(dims)),
+                    layer_type=self._layer_type,
+                )
+            )
         return nn.Sequential(*layers)
 
     def _get_act_fn(self, iteration: int, last_iteration: int) -> str:
@@ -88,7 +95,7 @@ class Head(nn.Module):
         return None
 
 
-class SimpleHead(Head, head_type='simple'):
+class SimpleHead(Head, head_type="simple"):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -96,7 +103,7 @@ class SimpleHead(Head, head_type='simple'):
         return self._heads[0](self._forward(*input_data))
 
 
-class DistributionValueHead(SimpleHead, head_type='distribution_value'):
+class DistributionValueHead(SimpleHead, head_type="distribution_value"):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -105,7 +112,7 @@ class DistributionValueHead(SimpleHead, head_type='distribution_value'):
         return out.view(-1, self._output_dim, self._support_dim)
 
 
-class DuelingHead(Head, head_type='dueling'):
+class DuelingHead(Head, head_type="dueling"):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._heads.append(self._make_module(self._support_dim))
@@ -117,8 +124,7 @@ class DuelingHead(Head, head_type='dueling'):
         return advantage
 
 
-class DistributionDuelingValueHead(DuelingHead,
-                                   head_type='distribution_dueling_value'):
+class DistributionDuelingValueHead(DuelingHead, head_type="distribution_dueling_value"):
     def forward(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         out = self._forward(*input_data)
         advantage, value = [head(out) for head in self._heads]
@@ -127,18 +133,18 @@ class DistributionDuelingValueHead(DuelingHead,
         return advantage + value - advantage.mean(1, True)
 
 
-class MultiHead(Head, head_type='multi'):
+class MultiHead(Head, head_type="multi"):
     def __init__(self, num_heads: int = 2, **kwargs):
         super().__init__(**kwargs)
-        delattr(self, '_phi')
-        self._heads = nn.ModuleList([
-            Head.build(head_type='simple', **kwargs) for _ in range(num_heads)])
+        delattr(self, "_phi")
+        self._heads = nn.ModuleList(
+            [Head.build(head_type="simple", **kwargs) for _ in range(num_heads)]
+        )
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> Sequence[th.Tensor]:
         return tuple(head(*input_data) for head in self._heads)
 
-    def evaluate_head(self, *input_data: Sequence[th.Tensor],
-                      idx: int) -> th.Tensor:
+    def evaluate_head(self, *input_data: Sequence[th.Tensor], idx: int) -> th.Tensor:
         return self._heads[idx](*input_data)
 
     def sample_noise(self):
@@ -151,13 +157,16 @@ class MultiHead(Head, head_type='multi'):
 
 
 class DistributionHead(Head):
-    def __init__(self,
-                 phi: Body,
-                 output_dim: int,
-                 reparameterize: bool = False,
-                 output_activation: str = 'none'):
-        super().__init__(phi=phi, output_dim=output_dim,
-                         output_activation=output_activation)
+    def __init__(
+        self,
+        phi: Body,
+        output_dim: int,
+        reparameterize: bool = False,
+        output_activation: str = "none",
+    ):
+        super().__init__(
+            phi=phi, output_dim=output_dim, output_activation=output_activation
+        )
         self._reparameterize = reparameterize
         self._dist = None
 
@@ -170,9 +179,9 @@ class DistributionHead(Head):
     def deterministic(self, *input_data: Sequence[th.Tensor]) -> th.Tensor:
         pass
 
-    def get_action(self,
-                   *input_data: Sequence[th.Tensor],
-                   deterministic: bool = False) -> th.Tensor:
+    def get_action(
+        self, *input_data: Sequence[th.Tensor], deterministic: bool = False
+    ) -> th.Tensor:
         if deterministic:
             return self.deterministic(*input_data)
         return self.sample(*input_data)
@@ -184,10 +193,9 @@ class DistributionHead(Head):
         return self._dist.entropy()
 
 
-class GaussianHead(DistributionHead, head_type='gaussian'):
+class GaussianHead(DistributionHead, head_type="gaussian"):
     def __init__(self, output_dim: int, **kwargs):
-        super().__init__(output_dim=output_dim * 2, reparameterize=True,
-                         **kwargs)
+        super().__init__(output_dim=output_dim * 2, reparameterize=True, **kwargs)
         self._output_dim = output_dim
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> Sequence[th.Tensor]:
@@ -214,10 +222,8 @@ class GaussianHead(DistributionHead, head_type='gaussian'):
         return log_prob.view(-1, 1)
 
 
-class SquashedGaussianHead(GaussianHead, head_type='squashed_gaussian'):
-    def __init__(self,
-                 log_std_limit: Tuple[float, float] = (-20.0, 2.0),
-                 **kwargs):
+class SquashedGaussianHead(GaussianHead, head_type="squashed_gaussian"):
+    def __init__(self, log_std_limit: Tuple[float, float] = (-20.0, 2.0), **kwargs):
         super().__init__(**kwargs)
         self._log_std_limit: Tuple[float, float] = log_std_limit
 

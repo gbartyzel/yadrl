@@ -8,17 +8,21 @@ from yadrl.agents.dqn.dqn import DQN
 from yadrl.common.memory import Batch
 
 
-class CategoricalDQN(DQN, agent_type='categorical_dqn'):
-    head_types = ['distribution_value', 'distribution_dueling_value']
+class CategoricalDQN(DQN, agent_type="categorical_dqn"):
+    head_types = ["distribution_value", "distribution_dueling_value"]
 
-    def __init__(self,
-                 v_limit: Tuple[float, float] = (-100.0, 100.0),
-                 support_dim: int = 51, **kwargs):
+    def __init__(
+        self,
+        v_limit: Tuple[float, float] = (-100.0, 100.0),
+        support_dim: int = 51,
+        **kwargs
+    ):
         self._support_dim = support_dim
         super().__init__(**kwargs)
         self._v_limit = v_limit
-        self._atoms = th.linspace(v_limit[0], v_limit[1], support_dim,
-                                  device=self._device).unsqueeze(0)
+        self._atoms = th.linspace(
+            v_limit[0], v_limit[1], support_dim, device=self._device
+        ).unsqueeze(0)
 
     def _sample_q(self, state: th.Tensor, train: bool = False) -> th.Tensor:
         probs = F.softmax(super()._sample_q(state, train), -1)
@@ -40,10 +44,13 @@ class CategoricalDQN(DQN, agent_type='categorical_dqn'):
             next_action = next_q.argmax(-1).long()
             next_probs = next_probs[batch_vec, next_action, :]
 
-            target_atoms = ops.td_target(batch.reward, batch.mask, self._atoms,
-                                         batch.discount_factor * self._discount)
-            target_probs = ops.l2_projection(next_probs, self._atoms,
-                                             target_atoms)
+            target_atoms = ops.td_target(
+                batch.reward,
+                batch.mask,
+                self._atoms,
+                batch.discount_factor * self._discount,
+            )
+            target_probs = ops.l2_projection(next_probs, self._atoms, target_atoms)
 
         self.model.sample_noise()
         log_probs = F.log_softmax(self.model(batch.state), -1)

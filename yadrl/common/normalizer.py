@@ -12,9 +12,9 @@ class DummyNormalizer:
     def __init__(self, **kwargs):
         pass
 
-    def __call__(self,
-                 batch_input: t.TData,
-                 device: th.device = th.device('cpu')) -> t.TData:
+    def __call__(
+        self, batch_input: t.TData, device: th.device = th.device("cpu")
+    ) -> t.TData:
         return batch_input
 
     def update(self, batch_input):
@@ -29,18 +29,20 @@ class DummyNormalizer:
 
 
 class RMSNormalizer(DummyNormalizer):
-    def __init__(self,
-                 dim: Tuple[int, ...],
-                 clip_min: float = -5.0,
-                 clip_max: float = 5.0,
-                 **kwargs):
+    def __init__(
+        self,
+        dim: Tuple[int, ...],
+        clip_min: float = -5.0,
+        clip_max: float = 5.0,
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self._rms = RunningMeanStd(dim)
         self._clip = (clip_min, clip_max)
 
-    def __call__(self,
-                 batch_input: t.TData,
-                 device: th.device = th.device('cpu')) -> t.TData:
+    def __call__(
+        self, batch_input: t.TData, device: th.device = th.device("cpu")
+    ) -> t.TData:
         mean, std = self._rms()
         if isinstance(batch_input, th.Tensor):
             th_mean = to_tensor(mean, device)
@@ -55,36 +57,40 @@ class RMSNormalizer(DummyNormalizer):
             self._rms.update(batch_input)
 
     def load(self, state_dict: Dict[str, Union[np.ndarray, int]]):
-        mean = state_dict['mean']
-        variance = state_dict['variance']
-        count = state_dict['count']
+        mean = state_dict["mean"]
+        variance = state_dict["variance"]
+        count = state_dict["count"]
         self._rms.set_parameters(mean, variance, count)
 
     def state_dict(self) -> Dict[str, Union[np.ndarray, int]]:
         state_dict = {
-            'mean': self._rms.mean,
-            'variance': self._rms.variance,
-            'count': self._rms.count
+            "mean": self._rms.mean,
+            "variance": self._rms.variance,
+            "count": self._rms.count,
         }
         return state_dict
 
 
 class ScaleNormalizer(DummyNormalizer):
-    def __init__(self,
-                 target_min: np.ndarray,
-                 target_max: np.ndarray,
-                 source_min: np.ndarray,
-                 source_max: np.ndarray,
-                 **kwargs):
+    def __init__(
+        self,
+        target_min: np.ndarray,
+        target_max: np.ndarray,
+        source_min: np.ndarray,
+        source_max: np.ndarray,
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self._t_min = target_min
         self._t_max = target_max
         self._s_min = source_min
         self._s_max = source_max
 
-    def __call__(self,
-                 batch_input: Union[np.ndarray, th.Tensor],
-                 device: th.device = th.device('cpu')) -> t.TData:
+    def __call__(
+        self,
+        batch_input: Union[np.ndarray, th.Tensor],
+        device: th.device = th.device("cpu"),
+    ) -> t.TData:
         t_min = self._t_min
         t_max = self._t_max
         s_min = self._s_min
@@ -102,7 +108,7 @@ class ImageNormalizer(DummyNormalizer):
         super().__init__(**kwargs)
         self._scale_factor = 1.0 / 256.0
 
-    def __call__(self,
-                 batch_input: t.TData,
-                 device: th.device = th.device('cpu')) -> t.TData:
+    def __call__(
+        self, batch_input: t.TData, device: th.device = th.device("cpu")
+    ) -> t.TData:
         return batch_input * self._scale_factor
