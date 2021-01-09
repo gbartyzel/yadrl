@@ -134,11 +134,11 @@ class DistributionDuelingValueHead(DuelingHead, head_type="distribution_dueling_
 
 
 class MultiHead(Head, head_type="multi"):
-    def __init__(self, num_heads: int = 2, **kwargs):
+    def __init__(self, num_heads: int = 2, inner_head_type: str = "simple", **kwargs):
         super().__init__(**kwargs)
         delattr(self, "_phi")
         self._heads = nn.ModuleList(
-            [Head.build(head_type="simple", **kwargs) for _ in range(num_heads)]
+            [Head.build(head_type=inner_head_type, **kwargs) for _ in range(num_heads)]
         )
 
     def forward(self, *input_data: Sequence[th.Tensor]) -> Sequence[th.Tensor]:

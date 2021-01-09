@@ -102,8 +102,8 @@ def td_target(
 
 
 def l2_projection(p: th.Tensor, z: th.Tensor, tz: th.Tensor) -> th.Tensor:
-    v_min = float(z.squeeze()[0].clone().cpu().numpy())
-    v_max = float(z.squeeze()[-1].clone().cpu().numpy())
+    v_min: float = float(to_numpy(z.squeeze()[0]))
+    v_max: float = float(to_numpy(z.squeeze()[-1]))
     z_delta = (v_max - v_min) / (z.shape[-1] - 1)
     z = z.expand_as(p)
     tz = tz.clamp(v_min, v_max).t().unsqueeze(-1)

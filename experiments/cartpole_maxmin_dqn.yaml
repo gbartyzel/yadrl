@@ -1,0 +1,43 @@
+cartpole_dqn:
+  agent_type: 'maxmin_dqn'
+  env_id: 'CartPole-v0'
+  common:
+    discount_factor: 0.99
+    n_step: 1
+    batch_size: 32
+    reward_scaling: 1.0
+    warm_up_steps: 1000
+    polyak_factor: 0.0
+    num_heads: 2
+    target_update_frequency: 100
+    update_frequency: 1
+    update_steps: 1
+    seed: 1337
+    log_path: 'output'
+  specific:
+    learning_rate: 0.001
+    use_double_q: false
+    use_dueling: false
+    use_huber_loss_fn: false
+    head_hidden_dim: [128]
+  state_normalizer:
+    type: null
+    parameters: null
+  exploration_strategy:
+    action_type: 'discrete'
+    type: 'linear'
+    parameters:
+      start_value: 1.0
+      end_value: 0.05
+      annealing_steps: 2000
+  memory:
+    capacity: 100000
+    combined: False
+    device: 'cuda'
+  body:
+    input:
+      primary: 4
+    layers:
+      - out_dim: 128
+        activation: 'relu'
+        layer_type: 'linear'
