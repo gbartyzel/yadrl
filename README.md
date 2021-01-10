@@ -7,6 +7,22 @@ written fully in PyTorch.
 
 ![Algos](misc/implemented_algos.png)
 
+## Installation
+
+Install YADRL package:
+
+```bash
+pip install .
+```
+
+## Execution example
+
+To execute experiments just type run following command:
+
+```bash
+yadrl_runner --config_path link/to/config/file
+```
+
 ## TODO
 
 Algorithm implementation:
