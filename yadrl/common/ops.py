@@ -74,12 +74,6 @@ def quantile_hubber_loss(
     delta: float = 1.0,
     reduction: str = "mean",
 ) -> th.Tensor:
-    transpose_target = target.t().unsqueeze(-1)
-    diff = transpose_target - prediction
-    loss = huber_loss(prediction, transpose_target, delta, "none")
-    loss *= th.abs(cumulative_density - (diff.detach() < 0.0).float()) / delta
-    loss = loss.sum(-1).mean(0)
-
     taus = cumulative_density.expand_as(prediction).unsqueeze(-1)
     transpose_target = target.unsqueeze(-1).transpose(1, 2)
     prediction = prediction.unsqueeze(-1)
