@@ -151,3 +151,4 @@ def create_log_dir(log_dir: str, experiment_name: str) -> str:
 def soft_update(params: th.nn.parameter, target_params: th.nn.parameter, factor: float):
     for param, t_param in zip(params, target_params):
         t_param.data.copy_(t_param.data * (1.0 - factor) + param.data * factor)
+

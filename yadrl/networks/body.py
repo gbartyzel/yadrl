@@ -40,6 +40,8 @@ class Body(nn.Module):
     def _build_network(self) -> nn.ModuleList:
         body = nn.ModuleList()
         input_size = self._body_parameters.input.primary
+        if isinstance(input_size, (list, tuple)):
+            input_size = input_size[0]
         for i, params in enumerate(self._body_parameters.layers):
             if self._body_parameters.action_layer == i:
                 input_size += self._body_parameters.input.secondary

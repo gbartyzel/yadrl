@@ -1,4 +1,5 @@
 import abc
+from copy import deepcopy
 from typing import Dict, Union
 
 import gym
@@ -11,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import yadrl.common.ops as ops
 import yadrl.common.types as t
+from yadrl.common.wrappers import apply_wrappers
 from yadrl.common.memory import ReplayMemory, Rollout
 from yadrl.common.normalizer import DummyNormalizer
 
@@ -36,7 +38,8 @@ class Agent(abc.ABC):
 
     def __init__(
         self,
-        env: gym.Env,
+        env_id: str,
+        env_wrappers: list,
         body: nn.Module,
         state_normalizer: DummyNormalizer = DummyNormalizer(),
         reward_scaling: float = 1.0,
@@ -49,7 +52,7 @@ class Agent(abc.ABC):
         seed: int = 1337,
     ):
         super().__init__()
-        self._env = env
+        self._env = apply_wrappers(gym.make(env_id), env_wrappers)
         self._state = None
         self._env_step = 0
         self._gradient_step = 0
@@ -179,6 +182,7 @@ class OffPolicyAgent(Agent):
 
     def train(self, max_steps: int):
         self._state = self._env.reset()
+        print(self._state.shape)
         total_reward = []
         pb = tqdm.tqdm(total=max_steps)
         while self._env_step < max_steps:

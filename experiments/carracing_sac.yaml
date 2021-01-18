@@ -1,0 +1,94 @@
+carracing_sac:
+  agent_type: 'sac'
+  env_id: 'CarRacing-v0'
+  env_wrappers: 
+    - type: 'resize' 
+      parameters:
+        shape: [64, 64]
+    - type: 'to_grayscale'
+      parameters:
+        keep_dim: False
+        #     - type: 'to_nchw'
+    - type: 'frame_stack'
+      parameters:
+        num_stack: 4
+  common:
+    discount_factor: 0.99
+    n_step: 1
+    batch_size: 32
+    reward_scaling: 1.0
+    warm_up_steps: 1000
+    polyak_factor: 0.0
+    target_update_frequency: 100
+    update_frequency: 1
+    update_steps: 1
+    seed: 1337
+    log_path: 'output'
+  specific:
+    pi_learning_rate: 0.0003
+    qv_learning_rate: 0.0003
+    entropy_learning_rate: 0.0003
+  state_normalizer:
+    type: 'image'
+    parameters: null
+  memory:
+    capacity: 100000
+    combined: False
+    device: 'cuda'
+  body:
+    actor:
+      input:
+        primary: [3, 96, 96]
+      layers:
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2 
+          padding: 1
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2
+          padding: 1
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2 
+          padding: 1
+        - layer_type: 'flatten'
+          out_dim: 2048
+        - out_dim: 512
+          layer_type: 'linear'
+          activation: 'relu'
+    critic:
+      input:
+        primary: [3, 96, 96]
+        secondary: 3
+      action_layer: 4
+      layers:
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2 
+          padding: 1
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2 
+          padding: 1
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2 
+          padding: 1
+        - layer_type: 'flatten'
+          out_dim: 2048
+        - out_dim: 512
+          layer_type: 'linear'
+          activation: 'relu'

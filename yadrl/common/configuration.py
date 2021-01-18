@@ -11,11 +11,13 @@ import yadrl.common.types as t
 from yadrl.common.memory import ReplayMemory
 from yadrl.networks.body import Body
 from yadrl.networks.body_parameter import BodyParameters
+from yadrl.common.wrappers import apply_wrappers
 
 
 @dataclass
 class Configuration:
-    env: gym.Env = field(init=False)
+    env_id: str = field(init=False)
+    env_wrappers: list = field(init=False)
     experiment_name: str = field(init=False)
     agent_type: str = field(init=False)
     common: t.TConfig = field(init=False)
@@ -35,13 +37,16 @@ class Configuration:
             self.state_normalizer = self.__parse_state_normalizer(
                 data["state_normalizer"]
             )
-        self.env = gym.make(data["env_id"])
+        self.env_id = data["env_id"]
+        self.env_wrappers = data["env_wrappers"]
+        env = apply_wrappers(gym.make(data["env_id"]), data["env_wrappers"])
         if "memory" in data:
             self.memory = ReplayMemory(
                 **data["memory"],
-                observation_space=self.env.observation_space,
-                action_space=self.env.action_space
+                observation_space=env.observation_space,
+                action_space=env.action_space
             )
+        env.close()
         if "exploration_strategy" in data:
             self.exploration_strategy = self.__parse_exploration_strategy(
                 data["exploration_strategy"]
