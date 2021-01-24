@@ -50,12 +50,12 @@ class BaseMemory:
         terminal: bool,
         discount_factor: float,
     ):
-        self._observation_buffer[self._transition_idx] = state
-        self._action_buffer[self._transition_idx] = action
-        self._reward_buffer[self._transition_idx] = reward
-        self._next_observation_buffer[self._transition_idx] = next_state
-        self._terminal_buffer[self._transition_idx] = terminal
-        self._discount_buffer[self._transition_idx] = discount_factor
+        self._observation_buffer[self._transition_idx, ...] = state
+        self._action_buffer[self._transition_idx, ...] = action
+        self._reward_buffer[self._transition_idx, ...] = reward
+        self._next_observation_buffer[self._transition_idx, ...] = next_state
+        self._terminal_buffer[self._transition_idx, ...] = terminal
+        self._discount_buffer[self._transition_idx, ...] = discount_factor
         self._size = min(self._size + 1, self._capacity)
 
     def popleft(self):
@@ -125,7 +125,6 @@ class ReplayMemory(BaseMemory):
         idxs = np.random.randint((self._size - 1), size=batch_size)
         if self._combined:
             idxs = np.append(idxs, np.array(self._transition_idx))
-
         state_b = state_normalizer(
             to_tensor(self._observation_buffer[idxs, ...], self._device), self._device
         )

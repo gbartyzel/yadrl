@@ -39,8 +39,8 @@ class Agent(abc.ABC):
     def __init__(
         self,
         env_id: str,
-        env_wrappers: list,
         body: nn.Module,
+        env_wrappers: list = None,
         state_normalizer: DummyNormalizer = DummyNormalizer(),
         reward_scaling: float = 1.0,
         discount_factor: float = 0.99,
@@ -118,7 +118,10 @@ class Agent(abc.ABC):
         th.save(state_dict, "model_{}.pth".format(self._env_step))
 
     def _act(self, state: np.ndarray, *args) -> t.TData:
-        state = ops.to_tensor(state, self._device).unsqueeze(0)
+        return self._preprocess_observation(state)
+
+    def _preprocess_observation(self, state: np.ndarray) -> t.TData:
+        state = ops.to_tensor(np.asarray(state), self._device).unsqueeze(0)
         return self._state_normalizer(state, self._device)
 
     def _observe(
@@ -182,7 +185,7 @@ class OffPolicyAgent(Agent):
 
     def train(self, max_steps: int):
         self._state = self._env.reset()
-        print(self._state.shape)
+
         total_reward = []
         pb = tqdm.tqdm(total=max_steps)
         while self._env_step < max_steps:
@@ -191,11 +194,13 @@ class OffPolicyAgent(Agent):
             total_reward.append(transition[2])
             pb.update(1)
             if transition[-1]:
+                print("dupa")
                 self._state = self._env.reset()
                 if self._env_step > 0:
                     self._log(sum(total_reward))
                 total_reward = []
         pb.close()
+        self._env.close()
 
     def _observe(
         self,
@@ -221,15 +226,13 @@ class OffPolicyAgent(Agent):
         if done:
             self._rollout.reset()
 
-    def _update_target(self, model: nn.Module, target_model: nn.Module):
-        if self._use_soft_update:
-            ops.soft_update(model.parameters(), target_model.parameters(), self._polyak)
-        else:
-            if (
-                self._env_step / self._update_frequency % self._target_update_frequency
-                == 0
-            ):
-                target_model.load_state_dict(model.state_dict())
+    def _update_target(
+        self, model: nn.Module, target_model: nn.Module, factor: float = None
+    ):
+        if factor is None:
+            factor = self._polyak
+        if self._env_step / self._update_frequency % self._target_update_frequency == 0:
+            ops.soft_update(model.parameters(), target_model.parameters(), factor)
 
     @abc.abstractmethod
     def _update(self):

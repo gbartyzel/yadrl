@@ -21,8 +21,7 @@ class Runner:
         args: argparse.Namespace = self._parse_arguments()
         self._test_flag: bool = args.test
         self._num_train_steps: int = args.num_train_steps
-        self._config: Configuration = Configuration(args.config_path)
-        self._agent: Agent = self._create_agent()
+        self._agent: Agent = self._create_agent(args.config_path)
         self.start()
 
     def start(self):
@@ -31,8 +30,8 @@ class Runner:
         else:
             self._agent.train(self._num_train_steps)
 
-    def _create_agent(self) -> Agent:
-        dict_config: dict = asdict(self._config)
+    def _create_agent(self, config_path: str) -> Agent:
+        dict_config: dict = asdict(Configuration(config_path))
         for i in dict_config.copy():
             if dict_config[i] is None:
                 dict_config.pop(i)

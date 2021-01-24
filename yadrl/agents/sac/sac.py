@@ -86,11 +86,10 @@ class SAC(OffPolicyAgent, agent_type="sac"):
     def _update(self):
         batch = self._memory.sample(self._batch_size, self._state_normalizer)
         self._update_critic(batch)
-        if (
-            self._env_step % (self._policy_update_frequency * self._update_frequency)
-            == 0
-        ):
-            self._update_actor_and_entropy(batch)
+
+        freq = self._policy_update_frequency * self._update_frequency
+        if self._env_step % freq == 0:
+            self._update_actor_and_entropy(batch.state)
             self._update_target(self.qv, self.target_qv)
 
     def _update_critic(self, batch: Batch):
@@ -110,6 +109,7 @@ class SAC(OffPolicyAgent, agent_type="sac"):
         expected_qs = self.qv(batch.state, batch.action)
 
         loss = sum(ops.mse_loss(q, target_q) for q in expected_qs)
+        self._writer.add_scalar("loss/qv", loss, self._env_step)
 
         self._qv_optim.zero_grad()
         loss.backward()
@@ -117,11 +117,11 @@ class SAC(OffPolicyAgent, agent_type="sac"):
             nn.utils.clip_grad_norm_(self.qv.parameters(), self._qv_grad_norm_value)
         self._qv_optim.step()
 
-    def _update_actor_and_entropy(self, batch: Batch):
-        action = self.pi.sample(batch.state)
+    def _update_actor_and_entropy(self, state: torch.Tensor):
+        action = self.pi.sample(state)
         log_prob = self.pi.log_prob(action)
         self.qv.sample_noise()
-        target_log_prob = torch.min(*self.qv(batch.state, action))
+        target_log_prob = torch.min(*self.qv(state, action))
         policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
 
         self._pi_optim.zero_grad()
@@ -129,6 +129,7 @@ class SAC(OffPolicyAgent, agent_type="sac"):
         if self._pi_grad_norm_value > 0.0:
             nn.utils.clip_grad_norm_(self.pi.parameters(), self._pi_grad_norm_value)
         self._pi_optim.step()
+        self._writer.add_scalar("loss/pi", policy_loss, self._env_step)
 
         if self._temperature_tuning:
             entropy_loss = torch.mean(
@@ -139,6 +140,7 @@ class SAC(OffPolicyAgent, agent_type="sac"):
             entropy_loss.backward()
             self._entropy_optim.step()
             self._temperature = self._log_temperature.exp().detach()
+            self._writer.add_scalar("loss/entropy", entropy_loss, self._env_step)
 
     @property
     def parameters(self) -> t.TNamedParameters:

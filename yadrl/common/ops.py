@@ -23,7 +23,7 @@ def scaled_logsoftmax(
 
 
 def to_tensor(data: np.ndarray, device: th.device) -> th.Tensor:
-    return th.from_numpy(data.copy()).float().to(device)
+    return th.from_numpy(data).float().to(device)
 
 
 def to_numpy(data: th.Tensor) -> np.ndarray:

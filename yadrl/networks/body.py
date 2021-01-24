@@ -27,11 +27,13 @@ class Body(nn.Module):
 
     def sample_noise(self):
         for layer in self._body:
-            layer.sample_noise()
+            if hasattr(layer, 'sample_noise'):
+                layer.sample_noise()
 
     def reset_noise(self):
         for layer in self._body:
-            layer.reset_noise()
+            if hasattr(layer, 'reset_noise'):
+                layer.reset_noise()
 
     @staticmethod
     def from_dict(parameters: Dict[str, Any]) -> "Body":
@@ -47,6 +49,9 @@ class Body(nn.Module):
                 input_size += self._body_parameters.input.secondary
             if params["layer_type"] == "flatten":
                 layer = nn.Flatten()
+            elif params["layer_type"] == "unflatten":
+                layer = nn.Unflatten(1, tuple(params["unflattened_size"]))
+                params["out_dim"] = params["unflattened_size"][0]
             else:
                 layer = Layer.build(input_size, **params)
             input_size = params["out_dim"]

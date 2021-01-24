@@ -81,10 +81,10 @@ class ScaleNormalizer(DummyNormalizer):
         **kwargs
     ):
         super().__init__(**kwargs)
-        self._t_min = target_min
-        self._t_max = target_max
-        self._s_min = source_min
-        self._s_max = source_max
+        self._t_min = np.array(target_min)
+        self._t_max = np.array(target_max)
+        self._s_min = np.array(source_min)
+        self._s_max = np.array(source_max)
 
     def __call__(
         self,

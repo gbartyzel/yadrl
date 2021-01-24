@@ -20,7 +20,7 @@ pip install .
 To execute experiments just type run following command:
 
 ```bash
-yadrl_runner --config_path link/to/config/file
+yadrl_runner --config_path experiments/carracing_sac.yaml
 ```
 
 ## TODO

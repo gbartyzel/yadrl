@@ -10,9 +10,11 @@ import yadrl.networks.noisy_linear as nl
 normalizations: Dict[str, Callable] = {
     "layer_norm": nn.LayerNorm,
     "batch_norm_1d": nn.BatchNorm1d,
-    "instance_norm_1d": (lambda in_dim: nn.InstanceNorm1d(in_dim, affine=True)),
+    "instance_norm_1d":
+    (lambda in_dim: nn.InstanceNorm1d(in_dim, affine=True)),
     "batch_norm_2d": nn.BatchNorm2d,
-    "instance_norm_2d": (lambda in_dim: nn.InstanceNorm2d(in_dim, affine=True)),
+    "instance_norm_2d":
+    (lambda in_dim: nn.InstanceNorm2d(in_dim, affine=True)),
     "group_norm": nn.GroupNorm,
 }
 
@@ -42,26 +44,23 @@ class Layer(nn.Module, abc.ABC):
         layer_type = kwargs["layer_type"]
         return cls.registered_layer[layer_type](in_dim=in_dim, **kwargs)
 
-    def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        layer_type: str,
-        activation: str = "none",
-        normalization: str = "none",
-        dropout_prob: float = 0.0,
-        num_group: int = 6,
-        layer_init: Callable = None,
-        **kwargs
-    ):
+    def __init__(self,
+                 in_dim: int,
+                 out_dim: int,
+                 layer_type: str,
+                 activation: str = "none",
+                 normalization: str = "none",
+                 dropout_prob: float = 0.0,
+                 num_group: int = 6,
+                 layer_init: Callable = None,
+                 **kwargs):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.layer_type = layer_type
 
-        self._module = self._make_module(
-            activation, normalization, dropout_prob, num_group, **kwargs
-        )
+        self._module = self._make_module(activation, normalization,
+                                         dropout_prob, num_group, **kwargs)
         if layer_init is not None:
             layer_init(self._module[0])
 
@@ -76,18 +75,13 @@ class Layer(nn.Module, abc.ABC):
         if "noisy" in self.layer_type:
             self._module[0].reset_noise()
 
-    def _make_module(
-        self,
-        activation: str,
-        normalization: str,
-        dropout_prob: float,
-        num_group: int,
-        **kwargs
-    ) -> nn.Sequential:
+    def _make_module(self, activation: str, normalization: str,
+                     dropout_prob: float, num_group: int,
+                     **kwargs) -> nn.Sequential:
         block = [
             self._get_layer(**kwargs),
-            self._get_normalization(normalization, num_group),
             activation_fn[activation],
+            self._get_normalization(normalization, num_group),
             self._get_dropout(dropout_prob),
         ]
         return nn.Sequential(*[module for module in block if module])
@@ -139,12 +133,28 @@ class IndependentLinear(Layer, layer_type="independent_noisy_linear"):
 
 class Conv1d(Layer, layer_type="conv2d"):
     def _get_layer(self, **kwargs) -> nn.Module:
-        return nn.Conv1d(in_channels=self.in_dim, out_channels=self.out_dim, **kwargs)
+        return nn.Conv1d(in_channels=self.in_dim,
+                         out_channels=self.out_dim,
+                         **kwargs)
 
 
 class Conv2d(Layer, layer_type="conv2d"):
     def _get_layer(self, **kwargs) -> nn.Module:
-        return nn.Conv2d(in_channels=self.in_dim, out_channels=self.out_dim, **kwargs)
+        return nn.Conv2d(in_channels=self.in_dim,
+                         out_channels=self.out_dim,
+                         **kwargs)
+
+    def _get_dropout(self, dropout_prob: float) -> nn.Module:
+        if dropout_prob > 0:
+            return nn.Dropout2d(dropout_prob)
+        return None
+
+
+class TransposeConv2d(Layer, layer_type="transpose_conv2d"):
+    def _get_layer(self, **kwargs) -> nn.Module:
+        return nn.ConvTranspose2d(in_channels=self.in_dim,
+                                  out_channels=self.out_dim,
+                                  **kwargs)
 
     def _get_dropout(self, dropout_prob: float) -> nn.Module:
         if dropout_prob > 0:

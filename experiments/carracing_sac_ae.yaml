@@ -1,5 +1,5 @@
 carracing_sac:
-  agent_type: 'sac'
+  agent_type: 'sac_ae'
   env_id: 'CarRacing-v0'
   env_wrappers: 
     - type: 'action_repeat'
@@ -30,9 +30,15 @@ carracing_sac:
     seed: 1337
     log_path: 'output'
   specific:
-    pi_learning_rate: 0.0005
-    qv_learning_rate: 0.0005
-    entropy_learning_rate: 0.0005
+    pi_learning_rate: 3.0e-4
+    qv_learning_rate: 3.0e-4
+    entropy_learning_rate: 3.0e-4
+    encoder_learning_rate: 1.0e-3
+    decoder_learning_rate: 1.0e-3
+    latent_factor: 1.0e-6
+    encoder_polyak: 0.01
+    decoder_weight_decay: 1.0e-7
+    policy_update_frequency: 1
   state_normalizer:
     type: 'image'
     parameters: null
@@ -41,7 +47,7 @@ carracing_sac:
     combined: False
     device: 'cuda'
   body:
-    actor:
+    encoder:
       input:
         primary: [9, 64, 64]
       layers:
@@ -50,21 +56,61 @@ carracing_sac:
           layer_type: 'conv2d'
           kernel_size: 3
           stride: 2 
-          padding: 1
         - out_dim: 32
           activation: 'relu'
           layer_type: 'conv2d'
           kernel_size: 3
           stride: 2
-          padding: 1
         - out_dim: 32
           activation: 'relu'
           layer_type: 'conv2d'
           kernel_size: 3
           stride: 2 
-          padding: 1
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'conv2d'
+          kernel_size: 3
+          stride: 2 
         - layer_type: 'flatten'
-          out_dim: 2048
+          out_dim: 288
+        - layer_type: 'linear'
+          out_dim: 32
+          activation: 'tanh'
+          normalization: 'layer_norm'
+    decoder:
+      input:
+        primary: 32
+      layers:
+        - layer_type: 'linear'
+          out_dim: 288
+          activation: 'relu'
+        - layer_type: 'unflatten'
+          unflattened_size: [32, 3, 3]
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'transpose_conv2d'
+          kernel_size: 3
+          stride: 2 
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'transpose_conv2d'
+          kernel_size: 3
+          stride: 2 
+        - out_dim: 32
+          activation: 'relu'
+          layer_type: 'transpose_conv2d'
+          kernel_size: 3
+          stride: 2 
+        - out_dim: 9
+          activation: 'sigmoid'
+          layer_type: 'transpose_conv2d'
+          kernel_size: 3
+          stride: 2 
+          output_padding: 1
+    actor:
+      input:
+        primary: 32
+      layers:
         - out_dim: 512
           layer_type: 'linear'
           activation: 'relu'
@@ -73,30 +119,10 @@ carracing_sac:
           activation: 'relu'
     critic:
       input:
-        primary: [9, 64, 64]
+        primary: 32
         secondary: 3
-      action_layer: 4
+      action_layer: 0
       layers:
-        - out_dim: 32
-          activation: 'relu'
-          layer_type: 'conv2d'
-          kernel_size: 3
-          stride: 2 
-          padding: 1
-        - out_dim: 32
-          activation: 'relu'
-          layer_type: 'conv2d'
-          kernel_size: 3
-          stride: 2 
-          padding: 1
-        - out_dim: 32
-          activation: 'relu'
-          layer_type: 'conv2d'
-          kernel_size: 3
-          stride: 2 
-          padding: 1
-        - layer_type: 'flatten'
-          out_dim: 2048
         - out_dim: 512
           layer_type: 'linear'
           activation: 'relu'

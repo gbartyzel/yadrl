@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch as th
@@ -9,3 +9,5 @@ TNamedParameters = Iterator[Tuple[str, th.Tensor]]
 TModuleDict = Dict[str, th.nn.Module]
 TActionOption = Union[np.ndarray, int]
 TConfig = Dict[str, Any]
+TEnvReturn = Tuple[np.ndarray, float, bool, dict]
+TWrappersOption = Sequence[Dict[str, Any]]

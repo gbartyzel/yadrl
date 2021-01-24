@@ -3,6 +3,7 @@ from typing import Any, Tuple, Union
 
 import gym
 import yaml
+import time
 
 import yadrl.common.exploration_noise as noise
 import yadrl.common.normalizer as norm
@@ -17,7 +18,7 @@ from yadrl.common.wrappers import apply_wrappers
 @dataclass
 class Configuration:
     env_id: str = field(init=False)
-    env_wrappers: list = field(init=False)
+    env_wrappers: t.TWrappersOption = field(init=False, default=None)
     experiment_name: str = field(init=False)
     agent_type: str = field(init=False)
     common: t.TConfig = field(init=False)
@@ -39,6 +40,10 @@ class Configuration:
             )
         self.env_id = data["env_id"]
         self.env_wrappers = data["env_wrappers"]
+
+        if "env_wrappers" not in data:
+            data["env_wrappers"] = None
+
         env = apply_wrappers(gym.make(data["env_id"]), data["env_wrappers"])
         if "memory" in data:
             self.memory = ReplayMemory(
@@ -47,6 +52,8 @@ class Configuration:
                 action_space=env.action_space
             )
         env.close()
+        time.sleep(1)
+
         if "exploration_strategy" in data:
             self.exploration_strategy = self.__parse_exploration_strategy(
                 data["exploration_strategy"]
