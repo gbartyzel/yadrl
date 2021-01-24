@@ -23,20 +23,20 @@ carracing_sac:
     batch_size: 128
     reward_scaling: 1.0
     warm_up_steps: 10000
-    polyak_factor: 0.005
+    polyak_factor: 0.01
     target_update_frequency: 1
     update_frequency: 1
     update_steps: 1
     seed: 1337
     log_path: 'output'
   specific:
-    pi_learning_rate: 3.0e-4
-    qv_learning_rate: 3.0e-4
-    entropy_learning_rate: 3.0e-4
+    pi_learning_rate: 1.0e-3
+    qv_learning_rate: 1.0e-3
+    entropy_learning_rate: 1.0e-4
     encoder_learning_rate: 1.0e-3
     decoder_learning_rate: 1.0e-3
     latent_factor: 1.0e-6
-    encoder_polyak: 0.01
+    encoder_polyak: 0.05
     decoder_weight_decay: 1.0e-7
     policy_update_frequency: 1
   state_normalizer:
@@ -74,12 +74,12 @@ carracing_sac:
         - layer_type: 'flatten'
           out_dim: 288
         - layer_type: 'linear'
-          out_dim: 32
+          out_dim: 64
           activation: 'tanh'
           normalization: 'layer_norm'
     decoder:
       input:
-        primary: 32
+        primary: 64
       layers:
         - layer_type: 'linear'
           out_dim: 288
@@ -109,7 +109,7 @@ carracing_sac:
           output_padding: 1
     actor:
       input:
-        primary: 32
+        primary: 64
       layers:
         - out_dim: 512
           layer_type: 'linear'
@@ -119,7 +119,7 @@ carracing_sac:
           activation: 'relu'
     critic:
       input:
-        primary: 32
+        primary: 64
         secondary: 3
       action_layer: 0
       layers:

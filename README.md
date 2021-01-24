@@ -15,13 +15,25 @@ Install YADRL package:
 pip install .
 ```
 
-## Execution example
+## CarRacing-v0 experiments:
 
-To execute experiments just type run following command:
+To execute CarRacing-v0 with SAC agent just run:
 
 ```bash
 yadrl_runner --config_path experiments/carracing_sac.yaml
 ```
+
+To execute CarRacing-v0 with SAC-AE agent just run:
+
+```bash
+yadrl_runner --config_path experiments/carracing_sac_ae.yaml
+```
+
+## Results
+
+CarRacing-v0 SAC
+
+![SAC](misc/sac_reward.svg)
 
 ## TODO
 
