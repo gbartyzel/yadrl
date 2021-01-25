@@ -20,13 +20,13 @@ pip install .
 To execute CarRacing-v0 with SAC agent just run:
 
 ```bash
-yadrl_runner --config_path experiments/carracing_sac.yaml
+python3 yadrl/runner.py --config_path experiments/carracing_sac.yaml
 ```
 
 To execute CarRacing-v0 with SAC-AE agent just run:
 
 ```bash
-yadrl_runner --config_path experiments/carracing_sac_ae.yaml
+python3 yadrl/runner.py --config_path experiments/carracing_sac_ae.yaml
 ```
 
 ## Results
