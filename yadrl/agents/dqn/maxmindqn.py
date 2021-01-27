@@ -53,10 +53,7 @@ class MaxminDQN(DQN, agent_type="maxmin_dqn"):
             target_next_qs = th.cat([q.unsqueeze(1) for q in target_next_qs], 1)
             target_next_q = target_next_qs.min(1)[0].max(1)[0].view(-1, 1)
             target_q = ops.td_target(
-                batch.reward,
-                batch.mask,
-                target_next_q,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, target_next_q, self._discount
             )
 
         self.model.sample_noise()

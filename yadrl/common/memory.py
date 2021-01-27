@@ -9,9 +9,7 @@ import yadrl.common.types as t
 from yadrl.common.normalizer import DummyNormalizer
 from yadrl.common.ops import to_tensor
 
-Batch = namedtuple(
-    "Batch", ["state", "action", "reward", "next_state", "mask", "discount_factor"]
-)
+Batch = namedtuple("Batch", ["state", "action", "reward", "next_state", "mask"])
 
 
 class BaseMemory:
@@ -39,7 +37,6 @@ class BaseMemory:
             (capacity,) + observation_space.shape, observation_space.dtype
         )
         self._terminal_buffer = np.zeros((capacity, 1), np.bool)
-        self._discount_buffer = np.zeros((capacity, 1), np.float32)
 
     def push(
         self,
@@ -48,14 +45,12 @@ class BaseMemory:
         reward: float,
         next_state: np.ndarray,
         terminal: bool,
-        discount_factor: float,
     ):
         self._observation_buffer[self._transition_idx] = state
         self._action_buffer[self._transition_idx] = action
         self._reward_buffer[self._transition_idx] = reward
         self._next_observation_buffer[self._transition_idx] = next_state
         self._terminal_buffer[self._transition_idx] = terminal
-        self._discount_buffer[self._transition_idx] = discount_factor
         self._size = min(self._size + 1, self._capacity)
 
     def popleft(self):
@@ -64,7 +59,6 @@ class BaseMemory:
         self._reward_buffer = self._np_popleft(self._reward_buffer)
         self._next_observation_buffer = self._np_popleft(self._next_observation_buffer)
         self._terminal_buffer = self._np_popleft(self._terminal_buffer)
-        self._discount_buffer = self._np_popleft(self._discount_buffer)
         self._size -= 1
 
     @staticmethod
@@ -83,7 +77,6 @@ class BaseMemory:
         self._reward_buffer = np.zeros_like(self._reward_buffer)
         self._next_observation_buffer = np.zeros_like(self._next_observation_buffer)
         self._terminal_buffer = np.zeros_like(self._terminal_buffer)
-        self._discount_buffer = np.zeros_like(self._discount_buffer)
         self._size = 0
         self._transition_idx = 0
 
@@ -93,15 +86,26 @@ class BaseMemory:
         reward = self._reward_buffer[item]
         next_state = self._next_observation_buffer[item]
         terminal = self._terminal_buffer[item]
-        discount_factor = self._discount_buffer[item]
-        return state, action, reward, next_state, terminal, discount_factor
+        return state, action, reward, next_state, terminal
 
 
 class ReplayMemory(BaseMemory):
-    def __init__(self, combined: bool = False, device: str = "cpu", **kwargs):
+    def __init__(
+        self,
+        n_step: int = 5,
+        discount_factor: float = 0.99,
+        combined: bool = False,
+        device: str = "cpu",
+        **kwargs
+    ):
         super().__init__(**kwargs)
         self._combined = combined
         self._device = th.device(device)
+        self._n_step = n_step
+
+        self._trajectory_discount_vec = np.array(
+            [discount_factor ** n for n in range(n_step)], dtype=np.float32
+        ).reshape(-1, 1)
 
     def push(
         self,
@@ -110,9 +114,8 @@ class ReplayMemory(BaseMemory):
         reward: float,
         next_state: np.ndarray,
         terminal: bool,
-        discount_factor: float,
     ):
-        super().push(state, action, reward, next_state, terminal, discount_factor)
+        super().push(state, action, reward, next_state, terminal)
         self._transition_idx = (self._transition_idx + 1) % self._capacity
 
     def sample(
@@ -126,24 +129,44 @@ class ReplayMemory(BaseMemory):
         if self._combined:
             idxs = np.append(idxs, np.array(self._transition_idx))
 
+        state_b, action_b, reward_b, next_state_b, terminal_b = [], [], [], [], []
+        for idx in idxs:
+            traj_idx = np.arange(idx, idx + self._n_step) % self._capacity
+            self._observation_buffer[idx]
+
+            traj_length = self._n_step
+            if np.any(self._terminal_buffer[traj_idx]):
+                termination_idx = np.where(self._terminal_buffer[traj_idx])[0]
+                traj_length = int(termination_idx[0]) + 1
+                traj_idx = traj_idx[:traj_length]
+
+            rewards = self._reward_buffer[traj_idx]
+            traj_discount = self._trajectory_discount_vec[:traj_length]
+            cum_reward = np.sum(rewards * traj_discount, axis=0)
+
+            state_b.append(self._observation_buffer[traj_idx[0]])
+            action_b.append(self._action_buffer[traj_idx[0]])
+            reward_b.append(cum_reward)
+            next_state_b.append(self._next_observation_buffer[traj_idx[-1]])
+            terminal_b.append(self._terminal_buffer[traj_idx[-1]])
+
         state_b = state_normalizer(
-            to_tensor(self._observation_buffer[idxs, ...], self._device), self._device
+            to_tensor(np.array(state_b), self._device), self._device
         )
-        action_b = to_tensor(self._action_buffer[idxs, ...], self._device)
-        reward_b = to_tensor(self._reward_buffer[idxs, ...], self._device)
+        action_b = to_tensor(np.array(action_b), self._device)
+        reward_b = to_tensor(np.array(reward_b), self._device)
         next_state_b = state_normalizer(
-            to_tensor(self._next_observation_buffer[idxs, ...], self._device),
+            to_tensor(np.array(next_state_b), self._device),
             self._device,
         )
-        mask_b = to_tensor(self._terminal_buffer[idxs, ...], self._device)
-        discount_b = to_tensor(self._discount_buffer[idxs, ...], self._device)
+        mask_b = to_tensor(np.array(terminal_b), self._device)
+
         return Batch(
             state=state_b,
             action=action_b,
             reward=reward_b,
             next_state=next_state_b,
             mask=mask_b,
-            discount_factor=discount_b,
         )
 
 

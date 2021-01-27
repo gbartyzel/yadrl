@@ -38,6 +38,8 @@ class Configuration:
         self.env = gym.make(data["env_id"])
         if "memory" in data:
             self.memory = ReplayMemory(
+                discount_factor=self.common["discount_factor"],
+                n_step=self.common["n_step"],
                 **data["memory"],
                 observation_space=self.env.observation_space,
                 action_space=self.env.action_space

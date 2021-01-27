@@ -64,15 +64,12 @@ class Agent(abc.ABC):
         else:
             self._action_dim = self._env.action_space.n
 
-        self._discount = discount_factor
+        self._discount = discount_factor ** n_step
         self._n_step = n_step
         self._batch_size = batch_size
         self._reward_scaling = reward_scaling
         self._update_steps = update_steps
 
-        self._rollout = Rollout(
-            n_step, self._env.action_space, self._env.observation_space
-        )
         self._state_normalizer = state_normalizer
 
         self._writer = SummaryWriter(ops.create_log_dir(log_path, experiment_name))
@@ -202,20 +199,13 @@ class OffPolicyAgent(Agent):
         done: bool,
     ):
         self._state_normalizer.update(state)
-        self._rollout.push(state, action, reward, next_state, done, self._discount)
-        transition = self._rollout.sample()
-        if transition is None:
-            return
-        for t in transition:
-            self._memory.push(*t)
+        self._memory.push(state, action, reward, next_state, done)
         if self._memory.size >= self._warm_up_steps:
             self._env_step += 1
             if self._env_step % self._update_frequency == 0:
                 for _ in range(self._update_steps):
                     self._gradient_step += 1
                     self._update()
-        if done:
-            self._rollout.reset()
 
     def _update_target(self, model: nn.Module, target_model: nn.Module):
         if self._use_soft_update:

@@ -37,10 +37,7 @@ class QuantileDQN(DQN, agent_type="quantile_regression_dqn"):
             next_quantiles = next_quantiles[batch_vec, next_action, :]
 
             target_quantiles = ops.td_target(
-                batch.reward,
-                batch.mask,
-                next_quantiles,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, next_quantiles, self._discount
             )
 
         action = batch.action.long().squeeze()

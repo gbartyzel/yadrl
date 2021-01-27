@@ -3,7 +3,7 @@ cartpole_dqn:
   env_id: 'CartPole-v0'
   common:
     discount_factor: 0.99
-    n_step: 1
+    n_step: 5
     batch_size: 32
     reward_scaling: 1.0
     warm_up_steps: 1000
@@ -15,9 +15,9 @@ cartpole_dqn:
     log_path: 'output'
   specific:
     learning_rate: 0.001
-    use_double_q: false
-    use_dueling: false
-    use_huber_loss_fn: false
+    use_double_q: true
+    use_dueling: true
+    use_huber_loss_fn: true
     head_hidden_dim: [128]
   state_normalizer:
     type: null
@@ -30,7 +30,7 @@ cartpole_dqn:
       end_value: 0.05
       annealing_steps: 2000
   memory:
-    capacity: 100000
+    capacity: 1000
     combined: False
     device: 'cuda'
   body:

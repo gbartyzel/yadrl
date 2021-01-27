@@ -34,10 +34,7 @@ class CategoricalDDPG(DDPG, agent_type="categorical_ddpg"):
             self.target_qv.sample_noise()
             next_probs = F.softmax(self.target_qv(batch.next_state, next_action), -1)
             target_atoms = ops.td_target(
-                batch.reward,
-                batch.mask,
-                self._atoms,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, self._atoms, self._discount
             )
             target_probs = ops.l2_projection(next_probs, self._atoms, target_atoms)
 

@@ -53,10 +53,7 @@ class TD3(DDPG, agent_type="td3"):
             target_next_qs = self.target_qv(batch.next_state, next_action)
             target_next_q = th.min(*target_next_qs).view(-1, 1)
             target_q = ops.td_target(
-                batch.reward,
-                batch.mask,
-                target_next_q,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, target_next_q, self._discount
             )
 
         self.qv.sample_noise()

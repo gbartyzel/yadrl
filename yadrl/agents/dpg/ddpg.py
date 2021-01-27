@@ -121,10 +121,8 @@ class DDPG(OffPolicyAgent, agent_type="ddpg"):
     def _update(self):
         batch = self._memory.sample(self._batch_size, self._state_normalizer)
         self._update_critic(batch)
-        if (
-            self._env_step % (self._policy_update_frequency * self._update_frequency)
-            == 0
-        ):
+        update_freq = self._policy_update_frequency * self._update_frequency
+        if self._env_step % update_freq == 0:
             self._update_actor(batch)
             self._update_target(self.pi, self.target_pi)
             self._update_target(self.qv, self.target_qv)
@@ -147,10 +145,7 @@ class DDPG(OffPolicyAgent, agent_type="ddpg"):
             self.target_qv.sample_noise()
             target_next_q = self.target_qv(batch.next_state, next_action)
             target_q = ops.td_target(
-                batch.reward,
-                batch.mask,
-                target_next_q,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, target_next_q, self._discount
             )
 
         self.qv.sample_noise()

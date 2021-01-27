@@ -45,10 +45,7 @@ class CategoricalDQN(DQN, agent_type="categorical_dqn"):
             next_probs = next_probs[batch_vec, next_action, :]
 
             target_atoms = ops.td_target(
-                batch.reward,
-                batch.mask,
-                self._atoms,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, self._atoms, self._discount
             )
             target_probs = ops.l2_projection(next_probs, self._atoms, target_atoms)
 

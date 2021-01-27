@@ -28,10 +28,7 @@ class QuantileDDPG(DDPG, agent_type="quantile_regression_ddpg"):
             self.target_qv.sample_noise()
             next_quantiles = self.target_qv(batch.next_state, next_action)
             target_quantiles = ops.td_target(
-                batch.reward,
-                batch.mask,
-                next_quantiles,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, next_quantiles, self._discount
             )
 
         self.qv.sample_noise()

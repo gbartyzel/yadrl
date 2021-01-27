@@ -2,7 +2,7 @@ from copy import deepcopy
 from itertools import chain
 
 import numpy as np
-import torch
+import torch as th
 import torch.nn as nn
 import torch.optim as optim
 
@@ -37,9 +37,7 @@ class SAC(OffPolicyAgent, agent_type="sac"):
         self._temperature_tuning = temperature_tuning
         if temperature_tuning:
             self._target_entropy = -np.prod(self._action_dim)
-            self._log_temperature = torch.zeros(
-                1, requires_grad=True, device=self._device
-            )
+            self._log_temperature = th.zeros(1, requires_grad=True, device=self._device)
             self._entropy_optim = optim.Adam(
                 [self._log_temperature], lr=entropy_learning_rate
             )
@@ -78,7 +76,7 @@ class SAC(OffPolicyAgent, agent_type="sac"):
 
     def _act(self, state: np.ndarray, train: bool = False) -> np.ndarray:
         self.pi.eval()
-        with torch.no_grad():
+        with th.no_grad():
             action = self.pi.get_action(super()._act(state), not train)
         self.pi.train()
         return action[0].cpu().numpy()
@@ -86,25 +84,20 @@ class SAC(OffPolicyAgent, agent_type="sac"):
     def _update(self):
         batch = self._memory.sample(self._batch_size, self._state_normalizer)
         self._update_critic(batch)
-        if (
-            self._env_step % (self._policy_update_frequency * self._update_frequency)
-            == 0
-        ):
+        update_freq = self._policy_update_frequency * self._update_frequency
+        if self._env_step % update_freq == 0:
             self._update_actor_and_entropy(batch)
             self._update_target(self.qv, self.target_qv)
 
     def _update_critic(self, batch: Batch):
-        with torch.no_grad():
+        with th.no_grad():
             next_action = self.pi.sample(batch.next_state)
             log_prob = self.pi.log_prob(next_action)
             self.target_qv.sample_noise()
-            target_next_q = torch.min(*self.target_qv(batch.next_state, next_action))
+            target_next_q = th.min(*self.target_qv(batch.next_state, next_action))
             target_next_v = target_next_q - self._temperature * log_prob
             target_q = ops.td_target(
-                batch.reward,
-                batch.mask,
-                target_next_v,
-                batch.discount_factor * self._discount,
+                batch.reward, batch.mask, target_next_v, self._discount
             )
         self.qv.sample_noise()
         expected_qs = self.qv(batch.state, batch.action)
@@ -121,8 +114,8 @@ class SAC(OffPolicyAgent, agent_type="sac"):
         action = self.pi.sample(batch.state)
         log_prob = self.pi.log_prob(action)
         self.qv.sample_noise()
-        target_log_prob = torch.min(*self.qv(batch.state, action))
-        policy_loss = torch.mean(self._temperature * log_prob - target_log_prob)
+        target_log_prob = th.min(*self.qv(batch.state, action))
+        policy_loss = th.mean(self._temperature * log_prob - target_log_prob)
 
         self._pi_optim.zero_grad()
         policy_loss.backward()
@@ -131,7 +124,7 @@ class SAC(OffPolicyAgent, agent_type="sac"):
         self._pi_optim.step()
 
         if self._temperature_tuning:
-            entropy_loss = torch.mean(
+            entropy_loss = th.mean(
                 -self._log_temperature * (log_prob + self._target_entropy).detach()
             )
 

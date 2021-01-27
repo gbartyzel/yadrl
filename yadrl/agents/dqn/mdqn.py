@@ -45,9 +45,7 @@ class MDQN(DQN, agent_type="munchausen_dqn"):
                 self._lower_clamp, 0.0
             )
             m_target = (next_pi * (target_q_next - next_log_pi)).sum(-1, True)
-            target_q = ops.td_target(
-                m_reward, batch.mask, m_target, batch.discount_factor * self._discount
-            )
+            target_q = ops.td_target(m_reward, batch.mask, m_target, self._discount)
 
         expected_q = self.model(batch.state).gather(1, batch.action.long())
         if self._use_huber_loss_fn:
